@@ -1058,7 +1058,6 @@
             <div class="sb-week">
               <div class="sb-week-bar"><div class="sb-week-fill" id="sb-week-fill-alina"></div></div>
               <span class="sb-week-label" id="sb-week-label-alina">This week: &ndash;</span>
-              <span class="sb-week-label" id="sb-today-label-alina"></span>
             </div>
             <span class="sb-streak" id="sb-streak-alina" hidden>
               <svg class="icon" aria-hidden="true"><use href="#icon-flame"></use></svg>
@@ -1071,7 +1070,6 @@
             <div class="sb-week">
               <div class="sb-week-bar"><div class="sb-week-fill" id="sb-week-fill-monty"></div></div>
               <span class="sb-week-label" id="sb-week-label-monty">This week: &ndash;</span>
-              <span class="sb-week-label" id="sb-today-label-monty"></span>
             </div>
             <span class="sb-streak" id="sb-streak-monty" hidden>
               <svg class="icon" aria-hidden="true"><use href="#icon-flame"></use></svg>
@@ -1319,8 +1317,8 @@
   var THEME_LABELS = { playground: 'Playground', 'wild-woods': 'Wild Woods', 'crystal-shrine': 'Crystal Shrine' };
   var WEEKLY_TARGET_RATIO = 0.9;   // must average 90% of the stars possible from words practiced this week
   var WEEKLY_MIN_DAYS = 3;         // ...spread across at least 3 different days
-  var WEEKLY_MIN_MAXSTARS = 24;    // ...and have attempted a real amount of practice, not just a word or two
-  var DAILY_ROUND_CAP = 2;         // only the first 2 rounds each day count toward the weekly goal, so one big session can't carry the whole week
+  var WEEKLY_MIN_MAXSTARS = 24;    // ...and have attempted a real amount of practice (~8 words), not just a word or two -
+                                    // also the sample size below which accuracy isn't shown as a percentage yet
 
   var state = {
     words: [],
@@ -1486,7 +1484,6 @@
         weekStars: raw.weekStars || 0,
         weekMaxStars: raw.weekMaxStars || 0,
         weekDays: raw.weekDays ? raw.weekDays.slice() : [],
-        weekDayRoundCounts: raw.weekDayRoundCounts ? Object.assign({}, raw.weekDayRoundCounts) : {},
         streakCount: raw.streakCount || 0,
         streakLastDay: raw.streakLastDay || null,
         testsThisWeek: raw.testsThisWeek || 0,
@@ -1520,7 +1517,6 @@
         data.weekStars = 0;
         data.weekMaxStars = 0;
         data.weekDays = [];
-        data.weekDayRoundCounts = {};
         data.testsThisWeek = 0;
         data.weekBestTestStars = 0;
         data.weekBestTestMax = 0;
@@ -1531,7 +1527,7 @@
         }).catch(function(){ return { data: data, newBadge: newBadge }; });
       }
       if(needsRollover){
-        return dbPatch(key, { weekStart: data.weekStart, weekStars: data.weekStars, weekMaxStars: data.weekMaxStars, weekDays: data.weekDays, weekDayRoundCounts: data.weekDayRoundCounts, testsThisWeek: data.testsThisWeek, weekBestTestStars: data.weekBestTestStars, weekBestTestMax: data.weekBestTestMax, badges: data.badges }).then(function(){
+        return dbPatch(key, { weekStart: data.weekStart, weekStars: data.weekStars, weekMaxStars: data.weekMaxStars, weekDays: data.weekDays, testsThisWeek: data.testsThisWeek, weekBestTestStars: data.weekBestTestStars, weekBestTestMax: data.weekBestTestMax, badges: data.badges }).then(function(){
           return { data: data, newBadge: newBadge };
         });
       }
@@ -1564,22 +1560,18 @@
     // Shown separately from the (day-capped) bar fill, so a mistake is
     // visibly reflected in the number even on day one of the week, when
     // the bar itself is still limited by the days-played requirement.
-    var accuracyPct = Math.round(weekRatio * 100);
+    // Below WEEKLY_MIN_MAXSTARS worth of practice, show a plain star
+    // count instead of a percentage - a lucky word or two shouldn't get
+    // to call itself "100% accuracy".
+    var hasEnoughSample = data.weekMaxStars >= WEEKLY_MIN_MAXSTARS;
+    var metric = hasEnoughSample
+      ? Math.round(weekRatio * 100) + '% accuracy'
+      : data.weekStars + ' star' + (data.weekStars === 1 ? '' : 's') + ' so far';
     return {
       days: days,
       pct: pct,
-      label: accuracyPct + '% accuracy · ' + days + '/' + WEEKLY_MIN_DAYS + ' days'
+      label: metric + ' · ' + days + '/' + WEEKLY_MIN_DAYS + ' days'
     };
-  }
-
-  /** How much of today's rounds already count toward the weekly goal,
-   * as a percentage of the daily cap - lets a player see they've banked
-   * today's maximum and further rounds that day won't add to the week. */
-  function todayCapProgress(data){
-    var today = isoDateLocal(new Date());
-    var roundsToday = (data.weekDayRoundCounts && data.weekDayRoundCounts[today]) || 0;
-    var capped = Math.min(roundsToday, DAILY_ROUND_CAP);
-    return { roundsToday: capped, pct: Math.round((capped / DAILY_ROUND_CAP) * 100), maxed: capped >= DAILY_ROUND_CAP };
   }
 
   function updateScoreboardItem(key, data){
@@ -1591,11 +1583,6 @@
       var progress = weeklyProgress(data);
       fillEl.style.width = progress.pct + '%';
       labelEl.textContent = 'This week: ' + progress.label;
-    }
-    var todayEl = el('sb-today-label-' + key);
-    if(todayEl && data){
-      var today = todayCapProgress(data);
-      todayEl.textContent = 'Today: ' + today.pct + '%' + (today.maxed ? ' – that’s today’s max!' : ' counted toward the week');
     }
     var streakEl = el('sb-streak-' + key);
     var streakTextEl = el('sb-streak-text-' + key);
@@ -1654,12 +1641,8 @@
       data.totalStars += state.stars;
 
       if(data.weekDays.indexOf(todayLocal) === -1){ data.weekDays.push(todayLocal); }
-      var roundsToday = data.weekDayRoundCounts[todayLocal] || 0;
-      if(roundsToday < DAILY_ROUND_CAP){
-        data.weekStars += state.stars;
-        data.weekMaxStars += state.maxStars;
-        data.weekDayRoundCounts[todayLocal] = roundsToday + 1;
-      }
+      data.weekStars += state.stars;
+      data.weekMaxStars += state.maxStars;
 
       var yesterdayLocal = isoDateLocal(new Date(Date.now() - 86400000));
       if(data.streakLastDay !== todayLocal){
@@ -1696,7 +1679,6 @@
         weekStars: data.weekStars,
         weekMaxStars: data.weekMaxStars,
         weekDays: data.weekDays,
-        weekDayRoundCounts: data.weekDayRoundCounts,
         streakCount: data.streakCount,
         streakLastDay: data.streakLastDay,
         testsThisWeek: data.testsThisWeek,
