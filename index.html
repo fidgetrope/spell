@@ -362,6 +362,7 @@
   .badges-card,.themes-card{display:flex;flex-direction:column;gap:18px;text-align:left;}
   .badges-header{display:flex;align-items:center;gap:12px;}
   .badges-header h2{flex:1;text-align:left;font-size:1.35rem;}
+  .badges-explainer{color:var(--ink-soft);font-weight:600;font-size:.92rem;line-height:1.4;margin:-8px 0 0;}
   .badge-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
   .badge-slot{display:flex;flex-direction:column;align-items:center;gap:6px;}
   .badge-medallion{
@@ -635,7 +636,9 @@
   .letter-key.wide{width:auto;padding:0 16px;background:var(--bg-soft-2);}
 
   /* results */
-  #screen-results .card{display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center;}
+  #screen-results .card{display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center;position:relative;}
+  .home-quick-btn{position:absolute;top:16px;left:16px;z-index:2;width:40px;height:40px;}
+  .home-quick-btn .icon{width:20px;height:20px;}
   .results-stars{
     font-family:var(--font-display);
     font-weight:800;
@@ -1055,6 +1058,9 @@
 
     <section id="screen-results" class="screen">
       <div class="card">
+        <button type="button" id="btn-results-home" class="icon-btn home-quick-btn" aria-label="Back to home">
+          <svg class="icon" aria-hidden="true"><use href="#icon-home"></use></svg>
+        </button>
         <svg class="mascot mascot--xl idle" id="mascot-results" aria-hidden="true"><use href="#mascot-pip"></use></svg>
         <h2 id="results-title" class="display">Round complete!</h2>
         <p class="results-stars">
@@ -1083,6 +1089,7 @@
           </button>
           <h2 id="badges-title" class="display">Badges</h2>
         </div>
+        <p class="badges-explainer" id="badges-explainer"></p>
         <div class="sb-week">
           <div class="sb-week-bar"><div class="sb-week-fill" id="badges-week-fill"></div></div>
           <span class="sb-week-label" id="badges-week-label">This week: &ndash;</span>
@@ -1529,6 +1536,10 @@
 
   function renderBadgesScreen(key, data){
     el('badges-title').textContent = POOL_TITLE[key] || 'Badges';
+    var explainerEl = el('badges-explainer');
+    if(explainerEl){
+      explainerEl.textContent = 'Earn stars by spelling words correctly. Play well on ' + WEEKLY_MIN_DAYS + ' different days this week to unlock a new badge!';
+    }
     var progress = weeklyProgress(data);
     el('badges-week-fill').style.width = progress.pct + '%';
     el('badges-week-label').textContent = 'This week: ' + progress.label + '. Keep going for a new badge!';
@@ -2011,6 +2022,7 @@
   el('btn-play-again').addEventListener('click', function(){ startMode(state.mode); });
   el('btn-switch-mode').addEventListener('click', function(){ startMode(state.mode === 'scramble' ? 'memory' : 'scramble'); });
   el('btn-new-list').addEventListener('click', function(){ showScreen('home'); });
+  el('btn-results-home').addEventListener('click', function(){ showScreen('home'); });
 
 })();
 </script>
