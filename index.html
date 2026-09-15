@@ -437,6 +437,24 @@
   .theme-check{width:18px;height:18px;color:var(--mint-deep);opacity:0;flex:0 0 auto;}
   .theme-swatch.active .theme-check{opacity:1;}
 
+  .reset-day-section{display:flex;flex-direction:column;gap:10px;}
+  .day-picker{display:flex;gap:6px;width:100%;}
+  .day-pill{
+    flex:1 1 0;
+    padding:10px 2px;
+    border-radius:14px;
+    border:2px solid var(--bg-soft);
+    background:var(--bg-soft);
+    color:var(--ink-soft);
+    font-family:var(--font-display);
+    font-weight:700;
+    font-size:.82rem;
+    cursor:pointer;
+    transition:transform .15s ease, background .15s ease, border-color .15s ease, color .15s ease;
+  }
+  .day-pill:hover{transform:translateY(-2px);}
+  .day-pill.selected{background:var(--pink);border-color:var(--pink);color:#fff;}
+
   .field-label{
     align-self:flex-start;
     font-weight:700;
@@ -1257,6 +1275,21 @@
             <svg class="icon theme-check" aria-hidden="true"><use href="#icon-check"></use></svg>
           </button>
         </div>
+        <div class="reset-day-section">
+          <label class="field-label">
+            <span>Weekly reset day</span>
+            <small>When their word list and weekly badge restart - pick the day after their school spelling test.</small>
+          </label>
+          <div class="day-picker" id="day-picker">
+            <button type="button" class="day-pill" data-day="0">Sun</button>
+            <button type="button" class="day-pill" data-day="1">Mon</button>
+            <button type="button" class="day-pill" data-day="2">Tue</button>
+            <button type="button" class="day-pill" data-day="3">Wed</button>
+            <button type="button" class="day-pill" data-day="4">Thu</button>
+            <button type="button" class="day-pill" data-day="5">Fri</button>
+            <button type="button" class="day-pill" data-day="6">Sat</button>
+          </div>
+        </div>
         <p class="home-hint" id="themes-hint"></p>
       </div>
     </section>
@@ -1364,21 +1397,55 @@
 
   applyTheme('playground');
 
+  var currentWeekStartDay = DEFAULT_WEEK_START_DAY;
+
+  function applyWeekStartDay(day, opts){
+    opts = opts || {};
+    currentWeekStartDay = day;
+    document.querySelectorAll('.day-pill').forEach(function(btn){
+      btn.classList.toggle('selected', Number(btn.getAttribute('data-day')) === day);
+    });
+    if(opts.persist && dbApi && state.player){
+      dbPatch(state.player, { weekStartDay: day });
+    }
+  }
+
+  document.querySelectorAll('.day-pill').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var day = Number(btn.getAttribute('data-day'));
+      applyWeekStartDay(day, { persist: true });
+      el('themes-hint').textContent = state.player
+        ? ('Weekly reset day set to ' + DAY_NAMES_FULL[day] + ' for ' + state.playerName + '.')
+        : 'Tap your name first to save a reset day.';
+    });
+  });
+
+  applyWeekStartDay(DEFAULT_WEEK_START_DAY);
+
   /* ---------------- week / badge helpers ---------------- */
 
   function pad2(n){ return n < 10 ? '0' + n : '' + n; }
 
   function isoDateLocal(d){ return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
 
-  function mondayOf(d){
+  var DEFAULT_WEEK_START_DAY = 1; // Monday, matches getDay() (0=Sun..6=Sat)
+  var DAY_NAMES_FULL = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+  /** Most recent occurrence of `weekStartDay` on or before `d` - each
+   * player can set their own, so their week (and weekly badge) resets
+   * on whatever day actually follows their school spelling test. */
+  function startOfWeek(d, weekStartDay){
     var date = new Date(d.getFullYear(), d.getMonth(), d.getDate());
     var day = date.getDay();
-    var diff = (day === 0 ? -6 : 1 - day);
-    date.setDate(date.getDate() + diff);
+    var diff = (day - weekStartDay + 7) % 7;
+    date.setDate(date.getDate() - diff);
     return date;
   }
 
-  function currentWeekStart(){ return isoDateLocal(mondayOf(new Date())); }
+  function currentWeekStart(weekStartDay){
+    var wsd = (typeof weekStartDay === 'number') ? weekStartDay : DEFAULT_WEEK_START_DAY;
+    return isoDateLocal(startOfWeek(new Date(), wsd));
+  }
 
   /* ---------------- scoreboard (this browser's own storage) ----------------
      This is the standalone build: it has no Claude sign-in requirement, so
@@ -1471,6 +1538,7 @@
     var ref = dbApi.doc('scores/' + key);
     return ref.get().then(function(snap){
       var raw = snap.exists ? snap.data() : {};
+      var weekStartDay = (typeof raw.weekStartDay === 'number') ? raw.weekStartDay : DEFAULT_WEEK_START_DAY;
       var data = {
         name: raw.name || (key === 'alina' ? 'Alina' : 'Monty'),
         totalRounds: raw.totalRounds || 0,
@@ -1480,7 +1548,8 @@
         bestMax: raw.bestMax || 0,
         bestMode: raw.bestMode || null,
         bestDate: raw.bestDate || null,
-        weekStart: raw.weekStart || currentWeekStart(),
+        weekStartDay: weekStartDay,
+        weekStart: raw.weekStart || currentWeekStart(weekStartDay),
         weekStars: raw.weekStars || 0,
         weekMaxStars: raw.weekMaxStars || 0,
         weekDays: raw.weekDays ? raw.weekDays.slice() : [],
@@ -1499,7 +1568,7 @@
       // inconsistency) - clamp it so the displayed ratio never exceeds
       // 100%, and the next recorded round persists the correction.
       if(data.weekStars > data.weekMaxStars){ data.weekStars = data.weekMaxStars; }
-      var nowWeek = currentWeekStart();
+      var nowWeek = currentWeekStart(weekStartDay);
       var needsRollover = !!raw.weekStart && data.weekStart !== nowWeek;
       var needsCreate = !snap.exists;
       var newBadge = null;
@@ -1860,6 +1929,7 @@
           }
           var themeToApply = result.data.theme || PLAYER_DEFAULT_THEME[key] || 'playground';
           applyTheme(themeToApply);
+          applyWeekStartDay(result.data.weekStartDay);
           var reveal = result.newBadge || pendingBadgeReveals[key];
           pendingBadgeReveals[key] = null;
           if(reveal){ showBadgeBanner(key, reveal); }
