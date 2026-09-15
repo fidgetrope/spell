@@ -342,6 +342,30 @@
   .badge-banner-text span{font-size:.88rem;font-weight:600;opacity:.9;}
   .badge-banner .icon-btn{width:32px;height:32px;background:rgba(255,255,255,.55);color:#5A3E12;box-shadow:none;flex:0 0 auto;}
 
+  .player-dashboard{display:flex;flex-direction:column;gap:10px;width:100%;}
+  .dash-badges-btn{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    width:100%;
+    background:linear-gradient(135deg,var(--yellow),var(--coral));
+    color:#5A3E12;
+    border:none;
+    border-radius:20px;
+    padding:12px 16px;
+    cursor:pointer;
+    text-align:left;
+    box-shadow:var(--shadow-sm);
+    transition:transform .15s ease;
+  }
+  .dash-badges-btn:hover{transform:translateY(-2px);}
+  .dash-badges-btn:active{transform:translateY(0) scale(.98);}
+  .dash-badges-btn .icon{width:26px;height:26px;flex:0 0 auto;}
+  .dash-badges-text{display:flex;flex-direction:column;gap:1px;}
+  .dash-badges-text strong{font-family:var(--font-display);font-size:1rem;}
+  .dash-badges-text small{font-size:.85rem;font-weight:700;opacity:.85;}
+  .dash-test-stats{color:var(--ink-soft);font-weight:600;font-size:.88rem;margin:0;text-align:center;}
+
   .home-nav-row{
     display:flex;
     gap:10px;
@@ -1057,6 +1081,16 @@
         </div>
 
         <div class="game-setup" id="game-setup" hidden>
+          <div class="player-dashboard" id="player-dashboard">
+            <button type="button" id="btn-open-badges-dash" class="dash-badges-btn">
+              <svg class="icon" aria-hidden="true"><use href="#icon-badge"></use></svg>
+              <span class="dash-badges-text">
+                <strong>My Badges</strong>
+                <small id="dash-badges-count"></small>
+              </span>
+            </button>
+            <p class="dash-test-stats" id="dash-test-stats"></p>
+          </div>
           <label class="field-label" for="word-input">
             <span id="word-list-heading">This week's words</span>
             <small id="word-list-hint">(sample shown: clear it and paste your own list, one word per line or separated by commas)</small>
@@ -1089,9 +1123,6 @@
         </div>
 
         <div class="home-nav-row">
-          <button type="button" id="btn-open-badges" class="pill-btn secondary nav-pill">
-            <svg class="icon" aria-hidden="true"><use href="#icon-badge"></use></svg>My Badges
-          </button>
           <button type="button" id="btn-open-themes" class="pill-btn secondary nav-pill">
             <svg class="icon" aria-hidden="true"><use href="#icon-palette"></use></svg>Themes
           </button>
@@ -1570,12 +1601,33 @@
     }
   }
 
+  /** Fills the badge-count + Spelling Test summary shown once a player
+   * is selected - the compact scoreboard cards stay glanceable for both
+   * players, this gives the selected one a fuller "how am I doing". */
+  function updatePlayerDashboard(key, data){
+    var countEl = el('dash-badges-count');
+    if(countEl){
+      var pool = (BADGE_POOLS[key] || []).concat(['perfect-speller']);
+      var owned = (data.badges || []).filter(function(id){ return pool.indexOf(id) !== -1; }).length;
+      countEl.textContent = owned + ' / ' + pool.length + ' unlocked';
+    }
+    var testEl = el('dash-test-stats');
+    if(testEl){
+      var text = 'Spelling Test: ' + (data.testsThisWeek || 0) + ' perfect this week';
+      text += data.weekBestTestMax
+        ? ' · best score ' + data.weekBestTestStars + '/' + data.weekBestTestMax
+        : ' · no rounds yet this week';
+      testEl.textContent = text;
+    }
+  }
+
   function refreshScoreboard(){
     if(!dbApi){ return; }
     ['alina', 'monty'].forEach(function(key){
       loadPlayerDoc(key).then(function(result){
         if(!result){ return; }
         updateScoreboardItem(key, result.data);
+        if(key === state.player){ updatePlayerDashboard(key, result.data); }
         if(result.newBadge){ pendingBadgeReveals[key] = result.newBadge; }
       }).catch(function(){ /* scoreboard is a nice-to-have; ignore failures */ });
     });
@@ -1753,7 +1805,7 @@
     });
   }
 
-  el('btn-open-badges').addEventListener('click', openBadgesScreen);
+  el('btn-open-badges-dash').addEventListener('click', openBadgesScreen);
   el('btn-open-badges-top').addEventListener('click', openBadgesScreen);
 
   /* ---------------- word list (per player, saved to db) ---------------- */
@@ -1814,6 +1866,7 @@
         loadPlayerDoc(key).then(function(result){
           if(!result){ applyTheme(PLAYER_DEFAULT_THEME[key] || 'playground'); return; }
           updateScoreboardItem(key, result.data);
+          updatePlayerDashboard(key, result.data);
           if(result.data.words){
             el('word-input').value = result.data.words;
             updateWordListLabel(state.playerName, true);
