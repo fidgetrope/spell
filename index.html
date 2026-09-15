@@ -470,6 +470,9 @@
   .mode-btn span.sub{font-size:.9rem;font-weight:600;opacity:.9;}
   .mode-scramble{background:linear-gradient(155deg,var(--pink),var(--pink-deep));}
   .mode-memory{background:linear-gradient(155deg,var(--blue),var(--blue-deep));}
+  .mode-spot{background:linear-gradient(155deg,var(--mint),var(--mint-deep));}
+  .mode-test{background:linear-gradient(155deg,var(--yellow),var(--yellow-deep));}
+  .mode-btn[hidden]{display:none;}
 
   .home-hint{
     min-height:20px;
@@ -604,6 +607,46 @@
     text-transform:lowercase;
   }
   input#memory-input:focus{border-color:var(--blue);background:var(--surface-2);outline-offset:2px;}
+
+  /* spot the spelling */
+  .spot-options{display:flex;flex-direction:column;gap:12px;width:100%;max-width:360px;}
+  .spot-option{
+    width:100%;
+    padding:16px 20px;
+    border-radius:20px;
+    border:2px solid var(--bg-soft);
+    background:var(--bg-soft);
+    color:var(--ink);
+    font-family:var(--font-display);
+    font-weight:700;
+    font-size:1.15rem;
+    text-align:center;
+    cursor:pointer;
+    transition:transform .15s ease, background .15s ease, border-color .15s ease, opacity .15s ease;
+  }
+  .spot-option:hover{transform:translateY(-2px);}
+  .spot-option:active{transform:translateY(0) scale(.98);}
+  .spot-option.correct{background:var(--mint);border-color:var(--mint-deep);color:#fff;}
+  .spot-option.wrong{background:var(--pink);border-color:var(--pink-deep);color:#fff;opacity:.55;}
+  .spot-option:disabled{cursor:default;}
+  .spot-option:disabled:hover{transform:none;}
+
+  /* spelling test */
+  input#test-input{
+    flex:1 1 220px;
+    max-width:280px;
+    border-radius:16px;
+    border:2px solid var(--bg-soft);
+    background:var(--bg-soft);
+    padding:12px 16px;
+    font-family:'Quicksand',sans-serif;
+    font-weight:700;
+    font-size:1.2rem;
+    color:var(--ink);
+    text-align:center;
+  }
+  input#test-input:focus{border-color:var(--yellow-deep);background:var(--surface-2);outline-offset:2px;}
+  input#test-input:disabled{opacity:.6;}
 
   .letter-grid{
     display:flex;
@@ -798,6 +841,16 @@
     <symbol id="icon-check" viewBox="0 0 24 24">
       <path d="M5 13l4 4 10-11"></path>
     </symbol>
+    <symbol id="icon-target" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="8"></circle>
+      <circle cx="12" cy="12" r="4"></circle>
+      <circle cx="12" cy="12" r=".6" fill="currentColor" stroke="none"></circle>
+    </symbol>
+    <symbol id="icon-speaker" viewBox="0 0 24 24">
+      <path d="M4 9v6h4l5 4V5L8 9H4Z" stroke-linejoin="round"></path>
+      <path d="M17 8.5a5 5 0 0 1 0 7"></path>
+      <path d="M19.5 6a8.5 8.5 0 0 1 0 12"></path>
+    </symbol>
 
     <symbol id="badge-fox" viewBox="0 0 64 64">
       <path d="M14,26 L24,8 L30,24 Z" fill="#C97B4A"></path>
@@ -930,6 +983,12 @@
       <path d="M24,34 L34,38 L28,48 Z" fill="#A97BE8" opacity=".8"></path>
       <circle cx="38" cy="18" r="1.6" fill="#FFFFFF" opacity=".8"></circle>
     </symbol>
+    <symbol id="badge-ribbon" viewBox="0 0 64 64">
+      <path d="M22,38 L15,58 L27,50 L32,57 L37,50 L49,58 L42,38 Z" fill="#FF8FAE"></path>
+      <circle cx="32" cy="27" r="17" fill="#F5A623"></circle>
+      <circle cx="32" cy="27" r="11" fill="#FFC94D"></circle>
+      <path d="M32,20 L34.3,24.8 L39.5,25.3 L35.6,28.8 L36.8,34 L32,31.2 L27.2,34 L28.4,28.8 L24.5,25.3 L29.7,24.8 Z" fill="#FFF6E0"></path>
+    </symbol>
   </svg>
 
   <header id="game-topbar" class="topbar" hidden>
@@ -1013,6 +1072,16 @@
               <span class="label">Memory Flash</span>
               <span class="sub">See it, then spell it from memory</span>
             </button>
+            <button id="btn-start-spot" class="mode-btn mode-spot" type="button">
+              <svg class="icon" aria-hidden="true"><use href="#icon-target"></use></svg>
+              <span class="label">Spot the Spelling</span>
+              <span class="sub">Pick the correct spelling</span>
+            </button>
+            <button id="btn-start-test" class="mode-btn mode-test" type="button">
+              <svg class="icon" aria-hidden="true"><use href="#icon-speaker"></use></svg>
+              <span class="label">Spelling Test</span>
+              <span class="sub">Listen, then type what you hear</span>
+            </button>
           </div>
           <p id="home-hint" class="home-hint"></p>
         </div>
@@ -1056,6 +1125,29 @@
       </div>
     </section>
 
+    <section id="screen-spot" class="screen">
+      <div class="card">
+        <svg class="mascot mascot--sm idle" id="mascot-spot" aria-hidden="true"><use href="#mascot-pip"></use></svg>
+        <p id="spot-message" class="game-message">Which spelling is right?</p>
+        <div id="spot-options" class="spot-options"></div>
+      </div>
+    </section>
+
+    <section id="screen-test" class="screen">
+      <div class="card">
+        <svg class="mascot mascot--sm idle" id="mascot-test" aria-hidden="true"><use href="#mascot-pip"></use></svg>
+        <p id="test-message" class="game-message">Listen carefully&hellip;</p>
+        <button type="button" id="btn-test-replay" class="pill-btn secondary hint-btn">
+          <svg class="icon" aria-hidden="true"><use href="#icon-speaker"></use></svg>
+          <span>Hear it again</span>
+        </button>
+        <div class="memory-input-row" id="test-input-row">
+          <input id="test-input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="type what you heard" aria-label="Type the word you heard">
+          <button id="btn-test-check" class="pill-btn primary" type="button">Check!</button>
+        </div>
+      </div>
+    </section>
+
     <section id="screen-results" class="screen">
       <div class="card">
         <button type="button" id="btn-results-home" class="icon-btn home-quick-btn" aria-label="Back to home">
@@ -1075,7 +1167,6 @@
         <p id="results-best-line" class="results-best-line"></p>
         <div class="results-actions">
           <button id="btn-play-again" class="pill-btn primary" type="button">Play Again</button>
-          <button id="btn-switch-mode" class="pill-btn secondary" type="button">Try the Other Game</button>
           <button id="btn-new-list" class="pill-btn ghost" type="button">New Word List</button>
         </div>
       </div>
@@ -1099,6 +1190,7 @@
           <span id="badges-streak-text"></span>
         </span>
         <div class="badge-grid" id="badge-grid"></div>
+        <p class="sb-week-label" id="badges-test-stats"></p>
       </div>
     </section>
 
@@ -1144,6 +1236,8 @@
     home: el('screen-home'),
     scramble: el('screen-scramble'),
     memory: el('screen-memory'),
+    spot: el('screen-spot'),
+    test: el('screen-test'),
     results: el('screen-results'),
     badges: el('screen-badges'),
     themes: el('screen-themes')
@@ -1177,7 +1271,8 @@
     moonstone:{label:'Moonstone', symbol:'badge-moonstone'},
     obsidian:{label:'Obsidian', symbol:'badge-obsidian'},
     'tigers-eye':{label:'Tiger’s Eye', symbol:'badge-tigers-eye'},
-    labradorite:{label:'Labradorite', symbol:'badge-labradorite'}
+    labradorite:{label:'Labradorite', symbol:'badge-labradorite'},
+    'perfect-speller':{label:'Perfect Speller', symbol:'badge-ribbon'}
   };
   var POOL_TITLE = { alina: 'Alina’s Menagerie', monty: 'Monty’s Shrine' };
   var PLAYER_DEFAULT_THEME = { alina: 'wild-woods', monty: 'crystal-shrine' };
@@ -1354,6 +1449,8 @@
         weekDayRoundCounts: raw.weekDayRoundCounts ? Object.assign({}, raw.weekDayRoundCounts) : {},
         streakCount: raw.streakCount || 0,
         streakLastDay: raw.streakLastDay || null,
+        testsThisWeek: raw.testsThisWeek || 0,
+        bestTestsInWeek: raw.bestTestsInWeek || 0,
         badges: raw.badges ? raw.badges.slice() : [],
         theme: raw.theme || null,
         words: raw.words || null
@@ -1377,6 +1474,7 @@
         data.weekMaxStars = 0;
         data.weekDays = [];
         data.weekDayRoundCounts = {};
+        data.testsThisWeek = 0;
       }
       if(needsCreate){
         return ref.set(data).then(function(){
@@ -1384,7 +1482,7 @@
         }).catch(function(){ return { data: data, newBadge: newBadge }; });
       }
       if(needsRollover){
-        return dbPatch(key, { weekStart: data.weekStart, weekStars: data.weekStars, weekMaxStars: data.weekMaxStars, weekDays: data.weekDays, weekDayRoundCounts: data.weekDayRoundCounts, badges: data.badges }).then(function(){
+        return dbPatch(key, { weekStart: data.weekStart, weekStars: data.weekStars, weekMaxStars: data.weekMaxStars, weekDays: data.weekDays, weekDayRoundCounts: data.weekDayRoundCounts, testsThisWeek: data.testsThisWeek, badges: data.badges }).then(function(){
           return { data: data, newBadge: newBadge };
         });
       }
@@ -1480,6 +1578,15 @@
         data.streakLastDay = todayLocal;
       }
 
+      if(state.mode === 'test' && state.maxStars > 0 && state.stars === state.maxStars){
+        data.testsThisWeek += 1;
+        if(data.testsThisWeek > data.bestTestsInWeek){ data.bestTestsInWeek = data.testsThisWeek; }
+        if(data.badges.indexOf('perfect-speller') === -1){
+          data.badges.push('perfect-speller');
+          pendingBadgeReveals[key] = 'perfect-speller';
+        }
+      }
+
       data.lastPlayed = nowIso;
       if(isNewBest){
         data.bestStars = state.stars;
@@ -1497,6 +1604,9 @@
         weekDayRoundCounts: data.weekDayRoundCounts,
         streakCount: data.streakCount,
         streakLastDay: data.streakLastDay,
+        testsThisWeek: data.testsThisWeek,
+        bestTestsInWeek: data.bestTestsInWeek,
+        badges: data.badges,
         lastPlayed: data.lastPlayed
       };
       if(isNewBest){
@@ -1552,7 +1662,7 @@
     }
     var grid = el('badge-grid');
     grid.innerHTML = '';
-    var pool = BADGE_POOLS[key] || [];
+    var pool = (BADGE_POOLS[key] || []).concat(['perfect-speller']);
     var owned = data.badges || [];
     pool.forEach(function(id){
       var meta = BADGE_META[id];
@@ -1569,6 +1679,10 @@
       wrap.appendChild(label);
       grid.appendChild(wrap);
     });
+    var testStatsEl = el('badges-test-stats');
+    if(testStatsEl){
+      testStatsEl.textContent = 'Spelling Test: ' + (data.testsThisWeek || 0) + ' perfect this week · best week ' + (data.bestTestsInWeek || 0);
+    }
   }
 
   function openBadgesScreen(){
@@ -1668,7 +1782,7 @@
   function showScreen(name){
     Object.keys(screens).forEach(function(k){ screens[k].classList.remove('active'); });
     screens[name].classList.add('active');
-    topbar.hidden = !(name === 'scramble' || name === 'memory');
+    topbar.hidden = !(name === 'scramble' || name === 'memory' || name === 'spot' || name === 'test');
     if(name !== 'results'){ clearConfetti(); }
     if(name === 'home'){ refreshScoreboard(); }
   }
@@ -1754,15 +1868,27 @@
     if(mode === 'scramble'){
       showScreen('scramble');
       loadScrambleWord();
-    } else {
+    } else if(mode === 'memory'){
       showScreen('memory');
       loadMemoryWord();
+    } else if(mode === 'spot'){
+      showScreen('spot');
+      loadSpotWord();
+    } else {
+      showScreen('test');
+      loadTestWord();
     }
   }
 
   el('btn-start-scramble').addEventListener('click', function(){ startMode('scramble'); });
   el('btn-start-memory').addEventListener('click', function(){ startMode('memory'); });
+  el('btn-start-spot').addEventListener('click', function(){ startMode('spot'); });
+  el('btn-start-test').addEventListener('click', function(){ startMode('test'); });
   el('btn-home').addEventListener('click', function(){ showScreen('home'); });
+
+  if(!window.speechSynthesis){
+    el('btn-start-test').hidden = true;
+  }
 
   /* ---------------- word scramble ---------------- */
 
@@ -1986,6 +2112,204 @@
     if(e.key === 'Enter'){ submitMemory(); }
   });
 
+  /* ---------------- spot the spelling ---------------- */
+
+  var spotAttempts = 0;
+  var spotOptions = [];
+  var VOWELS = 'aeiou';
+
+  function randInt(n){ return Math.floor(Math.random() * n); }
+
+  function swapAdjacentLetters(word){
+    var chars = word.split('');
+    var candidates = [];
+    for(var i = 0; i < chars.length - 1; i++){
+      if(chars[i].toLowerCase() !== chars[i + 1].toLowerCase()){ candidates.push(i); }
+    }
+    if(!candidates.length){ return null; }
+    var idx = candidates[randInt(candidates.length)];
+    var tmp = chars[idx]; chars[idx] = chars[idx + 1]; chars[idx + 1] = tmp;
+    return chars.join('');
+  }
+
+  function dropRandomLetter(word){
+    if(word.length < 3){ return null; }
+    var i = randInt(word.length);
+    return word.slice(0, i) + word.slice(i + 1);
+  }
+
+  function doubleRandomLetter(word){
+    var i = randInt(word.length);
+    return word.slice(0, i + 1) + word[i] + word.slice(i + 1);
+  }
+
+  function swapRandomVowel(word){
+    var idxs = [];
+    for(var i = 0; i < word.length; i++){
+      if(VOWELS.indexOf(word[i].toLowerCase()) !== -1){ idxs.push(i); }
+    }
+    if(!idxs.length){ return null; }
+    var i2 = idxs[randInt(idxs.length)];
+    var current = word[i2].toLowerCase();
+    var options = VOWELS.split('').filter(function(v){ return v !== current; });
+    var replacement = options[randInt(options.length)];
+    if(word[i2] === word[i2].toUpperCase()){ replacement = replacement.toUpperCase(); }
+    return word.slice(0, i2) + replacement + word.slice(i2 + 1);
+  }
+
+  function swapIeEi(word){
+    var lower = word.toLowerCase();
+    var idx = lower.indexOf('ie');
+    if(idx !== -1){ return word.slice(0, idx) + 'ei' + word.slice(idx + 2); }
+    idx = lower.indexOf('ei');
+    if(idx !== -1){ return word.slice(0, idx) + 'ie' + word.slice(idx + 2); }
+    return null;
+  }
+
+  function toggleDoubleLetter(word){
+    for(var i = 0; i < word.length - 1; i++){
+      if(word[i].toLowerCase() === word[i + 1].toLowerCase()){
+        return word.slice(0, i) + word.slice(i + 1);
+      }
+    }
+    var consonantIdxs = [];
+    for(var j = 0; j < word.length; j++){
+      if(VOWELS.indexOf(word[j].toLowerCase()) === -1){ consonantIdxs.push(j); }
+    }
+    if(!consonantIdxs.length){ return null; }
+    var k = consonantIdxs[randInt(consonantIdxs.length)];
+    return word.slice(0, k + 1) + word[k] + word.slice(k + 1);
+  }
+
+  /** Builds `count` plausible-looking wrong spellings of `word` using a mix
+   * of common error patterns (letter swaps, dropped/doubled letters, vowel
+   * mix-ups, ie/ei confusion), falling back to a guaranteed-unique suffix
+   * if a very short word runs out of real strategies to try. */
+  function generateMisspellings(word, count){
+    var strategies = shuffleArray([swapAdjacentLetters, dropRandomLetter, doubleRandomLetter, swapRandomVowel, swapIeEi, toggleDoubleLetter]);
+    var seen = {};
+    seen[word.toLowerCase()] = true;
+    var results = [];
+    for(var pass = 0; pass < 6 && results.length < count; pass++){
+      strategies.forEach(function(fn){
+        if(results.length >= count){ return; }
+        var candidate = fn(word);
+        if(candidate && candidate.length && !seen[candidate.toLowerCase()]){
+          seen[candidate.toLowerCase()] = true;
+          results.push(candidate);
+        }
+      });
+    }
+    var guard = 0;
+    while(results.length < count && guard < 10){
+      guard++;
+      var fallback = word + 'x'.repeat(guard);
+      if(!seen[fallback.toLowerCase()]){
+        seen[fallback.toLowerCase()] = true;
+        results.push(fallback);
+      }
+    }
+    return results;
+  }
+
+  function loadSpotWord(){
+    spotAttempts = 0;
+    var word = currentWord();
+    var wrongs = generateMisspellings(word, 2);
+    spotOptions = shuffleArray([word].concat(wrongs));
+    el('spot-message').className = 'game-message';
+    el('spot-message').textContent = 'Which spelling is right?';
+    setMascotFx('mascot-spot', null);
+    renderSpotOptions();
+  }
+
+  function renderSpotOptions(){
+    var wrap = el('spot-options');
+    wrap.innerHTML = '';
+    spotOptions.forEach(function(optionWord){
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'spot-option';
+      btn.textContent = optionWord;
+      btn.addEventListener('click', function(){ checkSpotAnswer(optionWord, btn); });
+      wrap.appendChild(btn);
+    });
+  }
+
+  function checkSpotAnswer(pickedWord, btnEl){
+    var correct = pickedWord.toLowerCase() === currentWord().toLowerCase();
+    if(correct){
+      var stars = spotAttempts === 0 ? 3 : (spotAttempts === 1 ? 2 : 1);
+      addStars(stars);
+      btnEl.classList.add('correct');
+      el('spot-message').className = 'game-message warm';
+      el('spot-message').textContent = 'Yes! That’s it!';
+      setMascotFx('mascot-spot', 'celebrate');
+      Array.from(el('spot-options').children).forEach(function(b){ b.disabled = true; });
+      setTimeout(advanceRound, 1300);
+    } else {
+      spotAttempts++;
+      btnEl.classList.add('wrong');
+      btnEl.disabled = true;
+      el('spot-message').className = 'game-message nudge';
+      el('spot-message').textContent = 'Not quite! Try another.';
+      setMascotFx('mascot-spot', 'oops');
+    }
+  }
+
+  /* ---------------- spelling test ---------------- */
+
+  var testAnswered = false;
+
+  function speakCurrentWord(){
+    if(!window.speechSynthesis){ return; }
+    window.speechSynthesis.cancel();
+    var utter = new SpeechSynthesisUtterance(currentWord());
+    utter.lang = 'en-GB';
+    utter.rate = 0.85;
+    window.speechSynthesis.speak(utter);
+  }
+
+  function loadTestWord(){
+    testAnswered = false;
+    el('test-message').className = 'game-message';
+    el('test-message').textContent = 'Listen carefully…';
+    el('test-input').value = '';
+    el('test-input').disabled = false;
+    el('btn-test-check').disabled = false;
+    setMascotFx('mascot-test', null);
+    el('test-input').focus();
+    speakCurrentWord();
+  }
+
+  function submitTest(){
+    if(testAnswered){ return; }
+    var input = el('test-input');
+    var value = input.value.trim();
+    if(!value){ return; }
+    testAnswered = true;
+    input.disabled = true;
+    el('btn-test-check').disabled = true;
+    var correct = value.toLowerCase() === currentWord().toLowerCase();
+    if(correct){
+      addStars(3);
+      el('test-message').className = 'game-message warm';
+      el('test-message').textContent = 'Spot on!';
+      setMascotFx('mascot-test', 'celebrate');
+    } else {
+      el('test-message').className = 'game-message nudge';
+      el('test-message').textContent = 'It’s spelled ' + currentWord() + '.';
+      setMascotFx('mascot-test', 'oops');
+    }
+    setTimeout(advanceRound, 1600);
+  }
+
+  el('btn-test-check').addEventListener('click', submitTest);
+  el('test-input').addEventListener('keydown', function(e){
+    if(e.key === 'Enter'){ submitTest(); }
+  });
+  el('btn-test-replay').addEventListener('click', speakCurrentWord);
+
   /* ---------------- shared progression ---------------- */
 
   function advanceRound(){
@@ -1996,7 +2320,9 @@
     }
     renderProgressDots();
     if(state.mode === 'scramble'){ loadScrambleWord(); }
-    else { loadMemoryWord(); }
+    else if(state.mode === 'memory'){ loadMemoryWord(); }
+    else if(state.mode === 'spot'){ loadSpotWord(); }
+    else { loadTestWord(); }
   }
 
   function showResults(){
@@ -2020,7 +2346,6 @@
   }
 
   el('btn-play-again').addEventListener('click', function(){ startMode(state.mode); });
-  el('btn-switch-mode').addEventListener('click', function(){ startMode(state.mode === 'scramble' ? 'memory' : 'scramble'); });
   el('btn-new-list').addEventListener('click', function(){ showScreen('home'); });
   el('btn-results-home').addEventListener('click', function(){ showScreen('home'); });
 
