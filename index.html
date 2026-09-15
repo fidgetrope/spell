@@ -1034,6 +1034,7 @@
             <div class="sb-week">
               <div class="sb-week-bar"><div class="sb-week-fill" id="sb-week-fill-alina"></div></div>
               <span class="sb-week-label" id="sb-week-label-alina">This week: &ndash;</span>
+              <span class="sb-week-label" id="sb-today-label-alina"></span>
             </div>
             <span class="sb-streak" id="sb-streak-alina" hidden>
               <svg class="icon" aria-hidden="true"><use href="#icon-flame"></use></svg>
@@ -1046,6 +1047,7 @@
             <div class="sb-week">
               <div class="sb-week-bar"><div class="sb-week-fill" id="sb-week-fill-monty"></div></div>
               <span class="sb-week-label" id="sb-week-label-monty">This week: &ndash;</span>
+              <span class="sb-week-label" id="sb-today-label-monty"></span>
             </div>
             <span class="sb-streak" id="sb-streak-monty" hidden>
               <svg class="icon" aria-hidden="true"><use href="#icon-flame"></use></svg>
@@ -1117,6 +1119,12 @@
         <svg class="mascot mascot--sm idle" id="mascot-memory" aria-hidden="true"><use href="#mascot-pip"></use></svg>
         <p id="memory-message" class="game-message">Watch closely&hellip;</p>
         <div id="memory-word" class="memory-word"></div>
+        <div class="hint-row" id="memory-replay-row" style="display:none;">
+          <button type="button" id="btn-memory-replay" class="pill-btn secondary hint-btn">
+            <svg class="icon" aria-hidden="true"><use href="#icon-bulb"></use></svg>
+            <span>Show it again</span>
+          </button>
+        </div>
         <div class="memory-input-row" id="memory-input-row" style="display:none;">
           <input id="memory-input" type="text" inputmode="none" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="type it here" aria-label="Type the word from memory">
           <button id="btn-memory-check" class="pill-btn primary" type="button">Check!</button>
@@ -1142,9 +1150,10 @@
           <span>Hear it again</span>
         </button>
         <div class="memory-input-row" id="test-input-row">
-          <input id="test-input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="type what you heard" aria-label="Type the word you heard">
+          <input id="test-input" type="text" inputmode="none" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="type what you heard" aria-label="Type the word you heard">
           <button id="btn-test-check" class="pill-btn primary" type="button">Check!</button>
         </div>
+        <div class="letter-grid" id="test-letter-grid"></div>
       </div>
     </section>
 
@@ -1278,7 +1287,7 @@
   var POOL_TITLE = { alina: 'Alina’s Menagerie', monty: 'Monty’s Shrine' };
   var PLAYER_DEFAULT_THEME = { alina: 'wild-woods', monty: 'crystal-shrine' };
   var THEME_LABELS = { playground: 'Playground', 'wild-woods': 'Wild Woods', 'crystal-shrine': 'Crystal Shrine' };
-  var WEEKLY_TARGET_RATIO = 0.8;   // must average 80% of the stars possible from words practiced this week
+  var WEEKLY_TARGET_RATIO = 0.9;   // must average 90% of the stars possible from words practiced this week
   var WEEKLY_MIN_DAYS = 3;         // ...spread across at least 3 different days
   var WEEKLY_MIN_MAXSTARS = 24;    // ...and have attempted a real amount of practice, not just a word or two
   var DAILY_ROUND_CAP = 2;         // only the first 2 rounds each day count toward the weekly goal, so one big session can't carry the whole week
@@ -1524,6 +1533,16 @@
     };
   }
 
+  /** How much of today's rounds already count toward the weekly goal,
+   * as a percentage of the daily cap - lets a player see they've banked
+   * today's maximum and further rounds that day won't add to the week. */
+  function todayCapProgress(data){
+    var today = isoDateLocal(new Date());
+    var roundsToday = (data.weekDayRoundCounts && data.weekDayRoundCounts[today]) || 0;
+    var capped = Math.min(roundsToday, DAILY_ROUND_CAP);
+    return { roundsToday: capped, pct: Math.round((capped / DAILY_ROUND_CAP) * 100), maxed: capped >= DAILY_ROUND_CAP };
+  }
+
   function updateScoreboardItem(key, data){
     var scoreEl = el('sb-score-' + key);
     if(scoreEl){ scoreEl.textContent = formatScoreLine(data); }
@@ -1533,6 +1552,11 @@
       var progress = weeklyProgress(data);
       fillEl.style.width = progress.pct + '%';
       labelEl.textContent = 'This week: ' + progress.label;
+    }
+    var todayEl = el('sb-today-label-' + key);
+    if(todayEl && data){
+      var today = todayCapProgress(data);
+      todayEl.textContent = 'Today: ' + today.pct + '%' + (today.maxed ? ' – that’s today’s max!' : ' counted toward the week');
     }
     var streakEl = el('sb-streak-' + key);
     var streakTextEl = el('sb-streak-text-' + key);
@@ -2045,31 +2069,43 @@
 
   function loadMemoryWord(){
     memoryAttempts = 0;
+    el('memory-input').value = '';
+    setMascotFx('mascot-memory', null);
+    revealMemoryWord();
+  }
+
+  /** Shows the current word for a moment, then hides it and reveals the
+   * input + keyboard. Also used by the "Show it again" button, which
+   * re-peeks without resetting attempts, stars, or what's typed so far. */
+  function revealMemoryWord(){
     var word = currentWord();
-    el('memory-message').className = 'game-message';
-    el('memory-message').textContent = 'Watch closely…';
     var wordEl = el('memory-word');
     wordEl.textContent = word;
     wordEl.classList.remove('hidden-word');
+    el('memory-message').className = 'game-message';
+    el('memory-message').textContent = 'Watch closely…';
+    el('memory-replay-row').style.display = 'none';
     el('memory-input-row').style.display = 'none';
     el('letter-grid').style.display = 'none';
-    el('memory-input').value = '';
-    setMascotFx('mascot-memory', null);
 
     var showMs = Math.min(4000, Math.max(1500, 900 + word.length * 350));
     clearTimeout(memoryTimer);
     memoryTimer = setTimeout(function(){
       wordEl.classList.add('hidden-word');
       el('memory-message').textContent = 'Now spell it from memory!';
+      el('memory-replay-row').style.display = 'flex';
       el('memory-input-row').style.display = 'flex';
-      buildLetterGrid();
+      buildLetterGrid('letter-grid', 'memory-input');
       el('letter-grid').style.display = 'grid';
       el('memory-input').focus();
     }, showMs);
   }
 
-  function buildLetterGrid(){
-    var grid = el('letter-grid');
+  /** Renders a tap-to-type on-screen keyboard into `gridId`, typing into
+   * `inputId`. Used instead of the device's native keyboard so autocorrect
+   * / suggestions can't hint or interfere with a spelling attempt. */
+  function buildLetterGrid(gridId, inputId){
+    var grid = el(gridId);
     grid.innerHTML = '';
     var rows = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
     rows.forEach(function(rowLetters, rowIdx){
@@ -2081,8 +2117,8 @@
         b.className = 'letter-key';
         b.textContent = ch;
         b.addEventListener('click', function(){
-          el('memory-input').value += ch;
-          el('memory-input').focus();
+          el(inputId).value += ch;
+          el(inputId).focus();
         });
         rowEl.appendChild(b);
       });
@@ -2093,7 +2129,7 @@
         back.textContent = '←';
         back.setAttribute('aria-label', 'Backspace');
         back.addEventListener('click', function(){
-          var input = el('memory-input');
+          var input = el(inputId);
           input.value = input.value.slice(0, -1);
           input.focus();
         });
@@ -2135,6 +2171,7 @@
   el('memory-input').addEventListener('keydown', function(e){
     if(e.key === 'Enter'){ submitMemory(); }
   });
+  el('btn-memory-replay').addEventListener('click', revealMemoryWord);
 
   /* ---------------- spot the spelling ---------------- */
 
@@ -2302,6 +2339,7 @@
     el('test-input').disabled = false;
     el('btn-test-check').disabled = false;
     setMascotFx('mascot-test', null);
+    buildLetterGrid('test-letter-grid', 'test-input');
     el('test-input').focus();
     speakCurrentWord();
   }
