@@ -1497,6 +1497,11 @@
         theme: raw.theme || null,
         words: raw.words || null
       };
+      // weekStars can never legitimately exceed weekMaxStars. If it does,
+      // it's leftover data from before weekMaxStars existed (or any other
+      // inconsistency) - clamp it so the displayed ratio never exceeds
+      // 100%, and the next recorded round persists the correction.
+      if(data.weekStars > data.weekMaxStars){ data.weekStars = data.weekMaxStars; }
       var nowWeek = currentWeekStart();
       var needsRollover = !!raw.weekStart && data.weekStart !== nowWeek;
       var needsCreate = !snap.exists;
