@@ -1165,6 +1165,7 @@
           New personal best!
         </p>
         <p id="results-best-line" class="results-best-line"></p>
+        <p id="results-test-week-line" class="results-best-line" hidden></p>
         <div class="results-actions">
           <button id="btn-play-again" class="pill-btn primary" type="button">Play Again</button>
           <button id="btn-new-list" class="pill-btn ghost" type="button">New Word List</button>
@@ -1451,6 +1452,8 @@
         streakLastDay: raw.streakLastDay || null,
         testsThisWeek: raw.testsThisWeek || 0,
         bestTestsInWeek: raw.bestTestsInWeek || 0,
+        weekBestTestStars: raw.weekBestTestStars || 0,
+        weekBestTestMax: raw.weekBestTestMax || 0,
         badges: raw.badges ? raw.badges.slice() : [],
         theme: raw.theme || null,
         words: raw.words || null
@@ -1475,6 +1478,8 @@
         data.weekDays = [];
         data.weekDayRoundCounts = {};
         data.testsThisWeek = 0;
+        data.weekBestTestStars = 0;
+        data.weekBestTestMax = 0;
       }
       if(needsCreate){
         return ref.set(data).then(function(){
@@ -1482,7 +1487,7 @@
         }).catch(function(){ return { data: data, newBadge: newBadge }; });
       }
       if(needsRollover){
-        return dbPatch(key, { weekStart: data.weekStart, weekStars: data.weekStars, weekMaxStars: data.weekMaxStars, weekDays: data.weekDays, weekDayRoundCounts: data.weekDayRoundCounts, testsThisWeek: data.testsThisWeek, badges: data.badges }).then(function(){
+        return dbPatch(key, { weekStart: data.weekStart, weekStars: data.weekStars, weekMaxStars: data.weekMaxStars, weekDays: data.weekDays, weekDayRoundCounts: data.weekDayRoundCounts, testsThisWeek: data.testsThisWeek, weekBestTestStars: data.weekBestTestStars, weekBestTestMax: data.weekBestTestMax, badges: data.badges }).then(function(){
           return { data: data, newBadge: newBadge };
         });
       }
@@ -1578,12 +1583,18 @@
         data.streakLastDay = todayLocal;
       }
 
-      if(state.mode === 'test' && state.maxStars > 0 && state.stars === state.maxStars){
-        data.testsThisWeek += 1;
-        if(data.testsThisWeek > data.bestTestsInWeek){ data.bestTestsInWeek = data.testsThisWeek; }
-        if(data.badges.indexOf('perfect-speller') === -1){
-          data.badges.push('perfect-speller');
-          pendingBadgeReveals[key] = 'perfect-speller';
+      if(state.mode === 'test' && state.maxStars > 0){
+        if(data.weekBestTestMax === 0 || state.stars > data.weekBestTestStars){
+          data.weekBestTestStars = state.stars;
+          data.weekBestTestMax = state.maxStars;
+        }
+        if(state.stars === state.maxStars){
+          data.testsThisWeek += 1;
+          if(data.testsThisWeek > data.bestTestsInWeek){ data.bestTestsInWeek = data.testsThisWeek; }
+          if(data.badges.indexOf('perfect-speller') === -1){
+            data.badges.push('perfect-speller');
+            pendingBadgeReveals[key] = 'perfect-speller';
+          }
         }
       }
 
@@ -1606,6 +1617,8 @@
         streakLastDay: data.streakLastDay,
         testsThisWeek: data.testsThisWeek,
         bestTestsInWeek: data.bestTestsInWeek,
+        weekBestTestStars: data.weekBestTestStars,
+        weekBestTestMax: data.weekBestTestMax,
         badges: data.badges,
         lastPlayed: data.lastPlayed
       };
@@ -1630,6 +1643,15 @@
       line.textContent = (isNewBest ? 'Personal best for ' : 'Best ever for ') + state.playerName + ': ' + best.bestStars + ' / ' + best.bestMax;
     } else {
       line.textContent = '';
+    }
+    var testWeekLine = el('results-test-week-line');
+    if(testWeekLine){
+      if(state.mode === 'test' && best && best.weekBestTestMax){
+        testWeekLine.hidden = false;
+        testWeekLine.textContent = 'Best Spelling Test this week: ' + best.weekBestTestStars + ' / ' + best.weekBestTestMax;
+      } else {
+        testWeekLine.hidden = true;
+      }
     }
   }
 
@@ -1681,7 +1703,9 @@
     });
     var testStatsEl = el('badges-test-stats');
     if(testStatsEl){
-      testStatsEl.textContent = 'Spelling Test: ' + (data.testsThisWeek || 0) + ' perfect this week · best week ' + (data.bestTestsInWeek || 0);
+      var text = 'Spelling Test: ' + (data.testsThisWeek || 0) + ' perfect this week · best week ' + (data.bestTestsInWeek || 0);
+      if(data.weekBestTestMax){ text += ' · top score this week ' + data.weekBestTestStars + '/' + data.weekBestTestMax; }
+      testStatsEl.textContent = text;
     }
   }
 
@@ -2339,6 +2363,7 @@
     el('results-msg').textContent = msg;
     el('results-best-badge').hidden = true;
     el('results-best-line').textContent = '';
+    el('results-test-week-line').hidden = true;
     showScreen('results');
     setMascotFx('mascot-results', 'celebrate');
     spawnConfetti();
