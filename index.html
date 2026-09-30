@@ -1348,10 +1348,9 @@
   var POOL_TITLE = { alina: 'Alina’s Menagerie', monty: 'Monty’s Shrine' };
   var PLAYER_DEFAULT_THEME = { alina: 'wild-woods', monty: 'crystal-shrine' };
   var THEME_LABELS = { playground: 'Playground', 'wild-woods': 'Wild Woods', 'crystal-shrine': 'Crystal Shrine' };
-  var WEEKLY_TARGET_RATIO = 0.9;   // must average 90% of the stars possible from words practiced this week
-  var WEEKLY_MIN_DAYS = 3;         // ...spread across at least 3 different days
-  var WEEKLY_MIN_MAXSTARS = 24;    // ...and have attempted a real amount of practice (~8 words), not just a word or two -
-                                    // also the sample size below which accuracy isn't shown as a percentage yet
+  var WEEKLY_GAMES_REQUIRED = 2;   // practice rounds (any of Scramble/Memory/Spot) needed this week, alongside
+                                    // one perfect Spelling Test, to earn a badge - no day-spread requirement,
+                                    // since the kids aren't with any one parent consistently enough for that
 
   var state = {
     words: [],
@@ -1550,9 +1549,7 @@
         bestDate: raw.bestDate || null,
         weekStartDay: weekStartDay,
         weekStart: raw.weekStart || currentWeekStart(weekStartDay),
-        weekStars: raw.weekStars || 0,
-        weekMaxStars: raw.weekMaxStars || 0,
-        weekDays: raw.weekDays ? raw.weekDays.slice() : [],
+        weekGamesPlayed: raw.weekGamesPlayed || 0,
         streakCount: raw.streakCount || 0,
         streakLastDay: raw.streakLastDay || null,
         testsThisWeek: raw.testsThisWeek || 0,
@@ -1563,18 +1560,12 @@
         theme: raw.theme || null,
         words: raw.words || null
       };
-      // weekStars can never legitimately exceed weekMaxStars. If it does,
-      // it's leftover data from before weekMaxStars existed (or any other
-      // inconsistency) - clamp it so the displayed ratio never exceeds
-      // 100%, and the next recorded round persists the correction.
-      if(data.weekStars > data.weekMaxStars){ data.weekStars = data.weekMaxStars; }
       var nowWeek = currentWeekStart(weekStartDay);
       var needsRollover = !!raw.weekStart && data.weekStart !== nowWeek;
       var needsCreate = !snap.exists;
       var newBadge = null;
       if(data.weekStart !== nowWeek){
-        var weekRatio = data.weekMaxStars > 0 ? data.weekStars / data.weekMaxStars : 0;
-        if(weekRatio >= WEEKLY_TARGET_RATIO && data.weekDays.length >= WEEKLY_MIN_DAYS && data.weekMaxStars >= WEEKLY_MIN_MAXSTARS){
+        if(data.weekGamesPlayed >= WEEKLY_GAMES_REQUIRED && data.testsThisWeek >= 1){
           var pool = BADGE_POOLS[key] || [];
           var unclaimed = pool.filter(function(id){ return data.badges.indexOf(id) === -1; });
           if(unclaimed.length){
@@ -1583,9 +1574,7 @@
           }
         }
         data.weekStart = nowWeek;
-        data.weekStars = 0;
-        data.weekMaxStars = 0;
-        data.weekDays = [];
+        data.weekGamesPlayed = 0;
         data.testsThisWeek = 0;
         data.weekBestTestStars = 0;
         data.weekBestTestMax = 0;
@@ -1596,7 +1585,7 @@
         }).catch(function(){ return { data: data, newBadge: newBadge }; });
       }
       if(needsRollover){
-        return dbPatch(key, { weekStart: data.weekStart, weekStars: data.weekStars, weekMaxStars: data.weekMaxStars, weekDays: data.weekDays, testsThisWeek: data.testsThisWeek, weekBestTestStars: data.weekBestTestStars, weekBestTestMax: data.weekBestTestMax, badges: data.badges }).then(function(){
+        return dbPatch(key, { weekStart: data.weekStart, weekGamesPlayed: data.weekGamesPlayed, testsThisWeek: data.testsThisWeek, weekBestTestStars: data.weekBestTestStars, weekBestTestMax: data.weekBestTestMax, badges: data.badges }).then(function(){
           return { data: data, newBadge: newBadge };
         });
       }
@@ -1620,26 +1609,20 @@
     return 0;
   }
 
+  /** Badge progress: WEEKLY_GAMES_REQUIRED practice rounds plus one
+   * perfect Spelling Test, in any order, no particular days required.
+   * pct treats each as an equal-weight checkpoint so the bar fills
+   * steadily rather than sitting at 0% until the hardest part is done. */
   function weeklyProgress(data){
-    var days = (data.weekDays || []).length;
-    var weekRatio = data.weekMaxStars ? data.weekStars / data.weekMaxStars : 0;
-    var starPct = Math.min(1, weekRatio / WEEKLY_TARGET_RATIO);
-    var dayPct = Math.min(1, days / WEEKLY_MIN_DAYS);
-    var pct = Math.round(Math.min(starPct, dayPct) * 100);
-    // Shown separately from the (day-capped) bar fill, so a mistake is
-    // visibly reflected in the number even on day one of the week, when
-    // the bar itself is still limited by the days-played requirement.
-    // Below WEEKLY_MIN_MAXSTARS worth of practice, show a plain star
-    // count instead of a percentage - a lucky word or two shouldn't get
-    // to call itself "100% accuracy".
-    var hasEnoughSample = data.weekMaxStars >= WEEKLY_MIN_MAXSTARS;
-    var metric = hasEnoughSample
-      ? Math.round(weekRatio * 100) + '% accuracy'
-      : data.weekStars + ' star' + (data.weekStars === 1 ? '' : 's') + ' so far';
+    var games = Math.min(data.weekGamesPlayed || 0, WEEKLY_GAMES_REQUIRED);
+    var testDone = (data.testsThisWeek || 0) >= 1;
+    var totalCheckpoints = WEEKLY_GAMES_REQUIRED + 1;
+    var doneCheckpoints = games + (testDone ? 1 : 0);
+    var pct = Math.round((doneCheckpoints / totalCheckpoints) * 100);
+    var testText = testDone ? 'perfect test done!' : 'perfect test not yet';
     return {
-      days: days,
       pct: pct,
-      label: metric + ' · ' + days + '/' + WEEKLY_MIN_DAYS + ' days'
+      label: games + '/' + WEEKLY_GAMES_REQUIRED + ' games · ' + testText
     };
   }
 
@@ -1709,9 +1692,7 @@
       data.totalRounds += 1;
       data.totalStars += state.stars;
 
-      if(data.weekDays.indexOf(todayLocal) === -1){ data.weekDays.push(todayLocal); }
-      data.weekStars += state.stars;
-      data.weekMaxStars += state.maxStars;
+      if(state.mode !== 'test'){ data.weekGamesPlayed += 1; }
 
       var yesterdayLocal = isoDateLocal(new Date(Date.now() - 86400000));
       if(data.streakLastDay !== todayLocal){
@@ -1745,9 +1726,7 @@
         name: data.name,
         totalRounds: data.totalRounds,
         totalStars: data.totalStars,
-        weekStars: data.weekStars,
-        weekMaxStars: data.weekMaxStars,
-        weekDays: data.weekDays,
+        weekGamesPlayed: data.weekGamesPlayed,
         streakCount: data.streakCount,
         streakLastDay: data.streakLastDay,
         testsThisWeek: data.testsThisWeek,
@@ -1805,7 +1784,7 @@
     el('badges-title').textContent = POOL_TITLE[key] || 'Badges';
     var explainerEl = el('badges-explainer');
     if(explainerEl){
-      explainerEl.textContent = 'Earn stars by spelling words correctly. Play well on ' + WEEKLY_MIN_DAYS + ' different days this week to unlock a new badge!';
+      explainerEl.textContent = 'Play ' + WEEKLY_GAMES_REQUIRED + ' games and get a Spelling Test 100% right this week to unlock a new badge!';
     }
     var progress = weeklyProgress(data);
     el('badges-week-fill').style.width = progress.pct + '%';
