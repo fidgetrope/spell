@@ -22,6 +22,18 @@ If everyone playing needs to see the same shared progress from any device, this 
 
 No build step, no dependencies. It's one HTML file with everything inlined, aside from the Google Fonts it loads over the internet, so it needs an ordinary internet connection to look right (it'll still work offline, just with fallback fonts).
 
+## Setting the weekly spelling lists
+
+Rather than the kids typing their own words in, a grown-up publishes each kid's list from `admin.html` (bookmark `.../admin.html` on your phone):
+
+1. Open `admin.html`. First time only, it asks for a GitHub fine-grained token (this repo only, **Contents: Read and write**). The token is kept in that browser's local storage and is never part of the repo.
+2. Type each kid's words and tap **Save both lists**. That commits `words.json` to the repo.
+3. A minute or so later, GitHub Pages serves the new file and the game picks it up the next time a kid taps their name or returns to the home screen. Their word box locks to the published list.
+
+If `words.json` doesn't exist or can't be reached, the game falls back to the old behaviour (each device keeps its own editable list). Because the repo is public, the lists are readable by anyone who finds `words.json`.
+
 ## Files
 
 - `index.html` — the game itself.
+- `admin.html` — grown-ups' page for publishing each kid's weekly list.
+- `words.json` — the published lists (created the first time you save from `admin.html`).

@@ -483,6 +483,8 @@
     transition:border-color .15s ease, background .15s ease;
   }
   textarea#word-input:focus{border-color:var(--pink);background:var(--surface-2);}
+  textarea#word-input[readonly]{cursor:default;resize:none;}
+  textarea#word-input[readonly]:focus{border-color:var(--bg-soft);background:var(--bg-soft);outline:none;}
 
   .mode-row{
     display:flex;
@@ -1885,16 +1887,57 @@
     }
   }
 
-  function updateWordListLabel(name, hasSaved){
+  function updateWordListLabel(name, hasSaved, managed){
     if(!name){
       el('word-list-heading').textContent = 'This week’s words';
       el('word-list-hint').textContent = '(one word per line or separated by commas)';
       return;
     }
     el('word-list-heading').textContent = name + '’s words this week';
+    if(managed){
+      el('word-list-hint').textContent = '(set for you each week, so just pick a game!)';
+      return;
+    }
     el('word-list-hint').textContent = hasSaved
       ? '(your saved list, edit any time: one word per line or separated by commas)'
       : '(add ' + name + '’s words for this week, one per line or separated by commas)';
+  }
+
+  /* Lists published by a grown-up via admin.html live in words.json next to
+     this page. When it's there, it owns each kid's list (the box locks);
+     if it's missing or unreachable, the editable per-device list is used. */
+  var serverWords = null;
+  var DEFAULT_WORD_PLACEHOLDER = el('word-input').placeholder;
+
+  function syncServerWords(){
+    return fetch('words.json?v=' + Date.now(), { cache: 'no-store' })
+      .then(function(r){ if(!r.ok){ throw new Error('no words file'); } return r.json(); })
+      .then(function(j){
+        var out = {};
+        ['alina', 'monty'].forEach(function(k){
+          if(Array.isArray(j[k])){ out[k] = j[k].map(String).join('\n'); }
+        });
+        serverWords = out;
+      })
+      .catch(function(){ serverWords = null; });
+  }
+
+  function applyWordList(key, localText){
+    if(state.player !== key){ return; }
+    var input = el('word-input');
+    if(serverWords && Object.prototype.hasOwnProperty.call(serverWords, key)){
+      var text = serverWords[key];
+      input.value = text;
+      input.readOnly = true;
+      input.placeholder = 'No words set yet - ask a grown-up to add this week’s list';
+      updateWordListLabel(state.playerName, true, true);
+      if(text !== localText){ saveWordsFor(key, text); }
+    } else {
+      input.readOnly = false;
+      input.placeholder = DEFAULT_WORD_PLACEHOLDER;
+      if(localText){ input.value = localText; }
+      updateWordListLabel(state.playerName, !!input.value);
+    }
   }
 
   el('word-input').addEventListener('input', function(){
@@ -1923,15 +1966,18 @@
       el('word-input').value = '';
       updateWordListLabel(state.playerName, false);
 
+      var syncPromise = syncServerWords();
       if(dbApi){
         loadPlayerDoc(key).then(function(result){
-          if(!result){ applyTheme(PLAYER_DEFAULT_THEME[key] || 'playground'); el('badge-banner').hidden = true; return; }
+          if(!result){
+            applyTheme(PLAYER_DEFAULT_THEME[key] || 'playground');
+            el('badge-banner').hidden = true;
+            syncPromise.then(function(){ applyWordList(key, null); });
+            return;
+          }
           updateScoreboardItem(key, result.data);
           updatePlayerDashboard(key, result.data);
-          if(result.data.words){
-            el('word-input').value = result.data.words;
-            updateWordListLabel(state.playerName, true);
-          }
+          syncPromise.then(function(){ applyWordList(key, result.data.words); });
           var themeToApply = result.data.theme || PLAYER_DEFAULT_THEME[key] || 'playground';
           applyTheme(themeToApply);
           applyWeekStartDay(result.data.weekStartDay);
@@ -1942,6 +1988,7 @@
       } else {
         applyTheme(PLAYER_DEFAULT_THEME[key] || 'playground');
         el('badge-banner').hidden = true;
+        syncPromise.then(function(){ applyWordList(key, null); });
       }
     });
   });
@@ -1953,6 +2000,11 @@
     if(name !== 'results'){ clearConfetti(); }
     if(name === 'home'){
       refreshScoreboard();
+      // Pick up a list a grown-up published since this tab was opened.
+      if(state.player){
+        var homeKey = state.player;
+        syncServerWords().then(function(){ applyWordList(homeKey, el('word-input').value); });
+      }
       // A badge can now be earned mid-round (see recordScore), so check
       // for one every time we land on home, not only when a player
       // button is tapped - otherwise the reveal sits queued and unseen
@@ -2033,7 +2085,9 @@
     flushWordSave();
     var words = parseWords(el('word-input').value);
     if(words.length === 0){
-      el('home-hint').textContent = 'Add a few words first, then pick a game!';
+      el('home-hint').textContent = el('word-input').readOnly
+        ? 'No words set for this week yet - ask a grown-up to add them!'
+        : 'Add a few words first, then pick a game!';
       return;
     }
     el('home-hint').textContent = '';
