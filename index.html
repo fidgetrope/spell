@@ -1077,7 +1077,7 @@
             <span class="sb-score" id="sb-score-alina">&ndash;</span>
             <div class="sb-week">
               <div class="sb-week-bar"><div class="sb-week-fill" id="sb-week-fill-alina"></div></div>
-              <span class="sb-week-label" id="sb-week-label-alina">This week: &ndash;</span>
+              <span class="sb-week-label" id="sb-week-label-alina">&ndash;</span>
             </div>
             <span class="sb-streak" id="sb-streak-alina" hidden>
               <svg class="icon" aria-hidden="true"><use href="#icon-flame"></use></svg>
@@ -1089,7 +1089,7 @@
             <span class="sb-score" id="sb-score-monty">&ndash;</span>
             <div class="sb-week">
               <div class="sb-week-bar"><div class="sb-week-fill" id="sb-week-fill-monty"></div></div>
-              <span class="sb-week-label" id="sb-week-label-monty">This week: &ndash;</span>
+              <span class="sb-week-label" id="sb-week-label-monty">&ndash;</span>
             </div>
             <span class="sb-streak" id="sb-streak-monty" hidden>
               <svg class="icon" aria-hidden="true"><use href="#icon-flame"></use></svg>
@@ -1241,7 +1241,7 @@
         <p class="badges-explainer" id="badges-explainer"></p>
         <div class="sb-week">
           <div class="sb-week-bar"><div class="sb-week-fill" id="badges-week-fill"></div></div>
-          <span class="sb-week-label" id="badges-week-label">This week: &ndash;</span>
+          <span class="sb-week-label" id="badges-week-label">&ndash;</span>
         </div>
         <span class="sb-streak" id="badges-streak-line" hidden>
           <svg class="icon" aria-hidden="true"><use href="#icon-flame"></use></svg>
@@ -1280,7 +1280,7 @@
         <div class="reset-day-section">
           <label class="field-label">
             <span>Weekly reset day</span>
-            <small>When their word list and weekly badge restart - pick the day after their school spelling test.</small>
+            <small>When their weekly Spelling Test stats (perfect tests, best score) start again - pick the day after their school spelling test.</small>
           </label>
           <div class="day-picker" id="day-picker">
             <button type="button" class="day-pill" data-day="0">Sun</button>
@@ -1350,9 +1350,8 @@
   var POOL_TITLE = { alina: 'Alina’s Menagerie', monty: 'Monty’s Shrine' };
   var PLAYER_DEFAULT_THEME = { alina: 'wild-woods', monty: 'crystal-shrine' };
   var THEME_LABELS = { playground: 'Playground', 'wild-woods': 'Wild Woods', 'crystal-shrine': 'Crystal Shrine' };
-  var WEEKLY_GAMES_REQUIRED = 2;   // practice rounds (any of Scramble/Memory/Spot) needed this week, alongside
-                                    // one perfect Spelling Test, to earn a badge - no day-spread requirement,
-                                    // since the kids aren't with any one parent consistently enough for that
+  var GAMES_PER_BADGE = 2;         // every 2 rounds played (any game, any result) earns the next animal/gem badge -
+                                    // no daily or weekly limit, so they can keep collecting until the pool runs out
 
   var state = {
     words: [],
@@ -1433,7 +1432,7 @@
   var DAY_NAMES_FULL = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
   /** Most recent occurrence of `weekStartDay` on or before `d` - each
-   * player can set their own, so their week (and weekly badge) resets
+   * player can set their own, so their week (and weekly test stats) resets
    * on whatever day actually follows their school spelling test. */
   function startOfWeek(d, weekStartDay){
     var date = new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -1531,27 +1530,29 @@
     }).catch(function(){ /* best-effort */ });
   }
 
-  /** Awards a random unclaimed animal/gem badge for `key` if this week's
-   * conditions (WEEKLY_GAMES_REQUIRED games + a perfect Spelling Test)
-   * are met and haven't already paid out this week. Mutates `data.badges`
-   * in place; caller is responsible for persisting the change. Returns
-   * the badge id if one was awarded, else null. */
-  function maybeAwardWeeklyBadge(key, data){
-    if(data.weeklyBadgeAwardedThisWeek || data.weekGamesPlayed < WEEKLY_GAMES_REQUIRED || data.testsThisWeek < 1){
-      return null;
-    }
-    data.weeklyBadgeAwardedThisWeek = true;
+  /** Spends GAMES_PER_BADGE of a player's banked games on a random
+   * unclaimed animal/gem badge. If they've already collected the whole
+   * pool, progress stays banked at full (not piling up) so the first game
+   * - or app open - after new badges are added to BADGE_POOLS pays out at
+   * once. Mutates `data` in place; caller persists it. Returns the badge
+   * id if one was awarded, else null. */
+  function maybeAwardBadge(key, data){
+    if(data.gamesTowardBadge < GAMES_PER_BADGE){ return null; }
     var pool = BADGE_POOLS[key] || [];
     var unclaimed = pool.filter(function(id){ return data.badges.indexOf(id) === -1; });
-    if(!unclaimed.length){ return null; }
+    if(!unclaimed.length){
+      data.gamesTowardBadge = GAMES_PER_BADGE;
+      return null;
+    }
     var badge = unclaimed[Math.floor(Math.random() * unclaimed.length)];
     data.badges.push(badge);
+    data.gamesTowardBadge -= GAMES_PER_BADGE;
     return badge;
   }
 
-  /** Reads a player's doc, rolls their week over if it's stale, and
-   * catches up a weekly badge if this week's conditions were already
-   * met before the player next opens the app (not just at rollover).
+  /** Reads a player's doc, rolls their week over if it's stale (that only
+   * affects the weekly Spelling Test stats), and hands out any badge their
+   * banked games have already earned - e.g. after new badges were added.
    * Persists any changes as a patch of only the fields that changed.
    * Resolves {data, newBadge}. */
   function loadPlayerDoc(key){
@@ -1571,8 +1572,11 @@
         bestDate: raw.bestDate || null,
         weekStartDay: weekStartDay,
         weekStart: raw.weekStart || currentWeekStart(weekStartDay),
-        weekGamesPlayed: raw.weekGamesPlayed || 0,
-        weeklyBadgeAwardedThisWeek: !!raw.weeklyBadgeAwardedThisWeek,
+        // Players saved under the old weekly rule carry over whatever
+        // games they'd already played toward a badge this week.
+        gamesTowardBadge: (typeof raw.gamesTowardBadge === 'number')
+          ? raw.gamesTowardBadge
+          : (raw.weeklyBadgeAwardedThisWeek ? 0 : Math.min(raw.weekGamesPlayed || 0, GAMES_PER_BADGE)),
         streakCount: raw.streakCount || 0,
         streakLastDay: raw.streakLastDay || null,
         testsThisWeek: raw.testsThisWeek || 0,
@@ -1586,27 +1590,24 @@
       var nowWeek = currentWeekStart(weekStartDay);
       var needsRollover = !!raw.weekStart && data.weekStart !== nowWeek;
       var needsCreate = !snap.exists;
-      // Rollover just clears the week's counters for a fresh start; the
-      // weekly badge itself is awarded below, whichever week it's for.
+      // Rollover just clears the week's Spelling Test stats; badge
+      // progress (gamesTowardBadge) carries on across weeks.
       if(data.weekStart !== nowWeek){
         data.weekStart = nowWeek;
-        data.weekGamesPlayed = 0;
-        data.weeklyBadgeAwardedThisWeek = false;
         data.testsThisWeek = 0;
         data.weekBestTestStars = 0;
         data.weekBestTestMax = 0;
       }
-      // Catches up a badge for anyone who already met this week's
-      // conditions before this check last ran (e.g. on an older version
-      // of the app, or simply not having reopened it since).
-      var newBadge = maybeAwardWeeklyBadge(key, data);
+      // Pays out banked games on load, so a badge isn't left waiting on
+      // the next round (e.g. migrated progress, or newly added badges).
+      var newBadge = maybeAwardBadge(key, data);
       if(needsCreate){
         return ref.set(data).then(function(){
           return { data: data, newBadge: newBadge };
         }).catch(function(){ return { data: data, newBadge: newBadge }; });
       }
       if(needsRollover || newBadge){
-        return dbPatch(key, { weekStart: data.weekStart, weekGamesPlayed: data.weekGamesPlayed, weeklyBadgeAwardedThisWeek: data.weeklyBadgeAwardedThisWeek, testsThisWeek: data.testsThisWeek, weekBestTestStars: data.weekBestTestStars, weekBestTestMax: data.weekBestTestMax, badges: data.badges }).then(function(){
+        return dbPatch(key, { weekStart: data.weekStart, gamesTowardBadge: data.gamesTowardBadge, testsThisWeek: data.testsThisWeek, weekBestTestStars: data.weekBestTestStars, weekBestTestMax: data.weekBestTestMax, badges: data.badges }).then(function(){
           return { data: data, newBadge: newBadge };
         });
       }
@@ -1630,20 +1631,21 @@
     return 0;
   }
 
-  /** Badge progress: WEEKLY_GAMES_REQUIRED practice rounds plus one
-   * perfect Spelling Test, in any order, no particular days required.
-   * pct treats each as an equal-weight checkpoint so the bar fills
-   * steadily rather than sitting at 0% until the hardest part is done. */
-  function weeklyProgress(data){
-    var games = Math.min(data.weekGamesPlayed || 0, WEEKLY_GAMES_REQUIRED);
-    var testDone = (data.testsThisWeek || 0) >= 1;
-    var totalCheckpoints = WEEKLY_GAMES_REQUIRED + 1;
-    var doneCheckpoints = games + (testDone ? 1 : 0);
-    var pct = Math.round((doneCheckpoints / totalCheckpoints) * 100);
-    var testText = testDone ? 'perfect test done!' : 'perfect test not yet';
+  /** Progress toward the next animal/gem badge: GAMES_PER_BADGE rounds
+   * each, nothing time-limited. Once the whole pool is collected the bar
+   * stays full and says new ones are on the way. */
+  function badgeProgress(key, data){
+    var pool = BADGE_POOLS[key] || [];
+    var owned = data.badges || [];
+    var allCollected = pool.length > 0 && pool.every(function(id){ return owned.indexOf(id) !== -1; });
+    if(allCollected){
+      return { pct: 100, label: 'all badges collected - more coming soon!', allCollected: true };
+    }
+    var games = Math.min(data.gamesTowardBadge || 0, GAMES_PER_BADGE);
     return {
-      pct: pct,
-      label: games + '/' + WEEKLY_GAMES_REQUIRED + ' games · ' + testText
+      pct: Math.round((games / GAMES_PER_BADGE) * 100),
+      label: games + '/' + GAMES_PER_BADGE + ' games to your next badge',
+      allCollected: false
     };
   }
 
@@ -1653,9 +1655,9 @@
     var fillEl = el('sb-week-fill-' + key);
     var labelEl = el('sb-week-label-' + key);
     if(fillEl && labelEl && data){
-      var progress = weeklyProgress(data);
+      var progress = badgeProgress(key, data);
       fillEl.style.width = progress.pct + '%';
-      labelEl.textContent = 'This week: ' + progress.label;
+      labelEl.textContent = progress.label;
     }
     var streakEl = el('sb-streak-' + key);
     var streakTextEl = el('sb-streak-text-' + key);
@@ -1704,6 +1706,7 @@
     loadPlayerDoc(key).then(function(result){
       if(!result){ showBestResult(false, null); return; }
       var data = result.data;
+      if(result.newBadge){ pendingBadgeReveals[key] = result.newBadge; }
       var prevPercent = data.bestMax ? data.bestStars / data.bestMax : -1;
       var thisPercent = state.maxStars ? state.stars / state.maxStars : 0;
       var isNewBest = thisPercent > prevPercent || (thisPercent === prevPercent && state.stars > data.bestStars);
@@ -1713,7 +1716,7 @@
       data.totalRounds += 1;
       data.totalStars += state.stars;
 
-      if(state.mode !== 'test'){ data.weekGamesPlayed += 1; }
+      data.gamesTowardBadge += 1;
 
       var yesterdayLocal = isoDateLocal(new Date(Date.now() - 86400000));
       if(data.streakLastDay !== todayLocal){
@@ -1736,11 +1739,12 @@
         }
       }
 
-      // Award the weekly animal/gem badge the instant both conditions are
-      // met, rather than waiting for the week to roll over - that's what
-      // makes "2 games + a perfect test" achievable in one sitting.
-      var newWeeklyBadge = maybeAwardWeeklyBadge(key, data);
-      if(newWeeklyBadge){ pendingBadgeReveals[key] = newWeeklyBadge; }
+      // Every GAMES_PER_BADGE rounds pays out the next animal/gem badge on
+      // the spot. Only one banner can show per visit, so if this round
+      // also earned the one-off Perfect Speller badge, that one wins it
+      // (both badges are still kept).
+      var newPoolBadge = maybeAwardBadge(key, data);
+      if(newPoolBadge && !pendingBadgeReveals[key]){ pendingBadgeReveals[key] = newPoolBadge; }
 
       data.lastPlayed = nowIso;
       if(isNewBest){
@@ -1753,8 +1757,7 @@
         name: data.name,
         totalRounds: data.totalRounds,
         totalStars: data.totalStars,
-        weekGamesPlayed: data.weekGamesPlayed,
-        weeklyBadgeAwardedThisWeek: data.weeklyBadgeAwardedThisWeek,
+        gamesTowardBadge: data.gamesTowardBadge,
         streakCount: data.streakCount,
         streakLastDay: data.streakLastDay,
         testsThisWeek: data.testsThisWeek,
@@ -1812,11 +1815,11 @@
     el('badges-title').textContent = POOL_TITLE[key] || 'Badges';
     var explainerEl = el('badges-explainer');
     if(explainerEl){
-      explainerEl.textContent = 'Play ' + WEEKLY_GAMES_REQUIRED + ' games and get a Spelling Test 100% right this week to unlock a new badge!';
+      explainerEl.textContent = 'Play ' + GAMES_PER_BADGE + ' games to win a new badge! Keep playing and you can collect them all.';
     }
-    var progress = weeklyProgress(data);
+    var progress = badgeProgress(key, data);
     el('badges-week-fill').style.width = progress.pct + '%';
-    el('badges-week-label').textContent = 'This week: ' + progress.label + '. Keep going for a new badge!';
+    el('badges-week-label').textContent = progress.label.charAt(0).toUpperCase() + progress.label.slice(1) + (progress.allCollected ? '' : '. Keep going!');
     var streak = effectiveStreak(data);
     var streakLine = el('badges-streak-line');
     var streakText = el('badges-streak-text');
