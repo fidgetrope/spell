@@ -365,6 +365,33 @@
   .dash-badges-text strong{font-family:var(--font-display);font-size:1rem;}
   .dash-badges-text small{font-size:.85rem;font-weight:700;opacity:.85;}
   .dash-test-stats{color:var(--ink-soft);font-weight:600;font-size:.88rem;margin:0;text-align:center;}
+  .collect-picker{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px;}
+  .collect-label{flex:0 0 100%;text-align:center;font-weight:700;font-size:.9rem;color:var(--ink-soft);margin-bottom:-2px;}
+  .collect-pill{
+    flex:1 1 0;
+    max-width:180px;
+    padding:9px 12px;
+    border-radius:var(--radius-pill);
+    border:2px solid var(--bg-soft);
+    background:var(--bg-soft);
+    color:var(--ink-soft);
+    font-family:var(--font-display);
+    font-weight:700;
+    font-size:.9rem;
+    cursor:pointer;
+    transition:transform .15s ease, background .15s ease, color .15s ease, border-color .15s ease;
+  }
+  .collect-pill:hover{transform:translateY(-2px);}
+  .collect-pill.selected{background:var(--pink);border-color:var(--pink);color:#fff;}
+  .badge-section-title{
+    grid-column:1/-1;
+    margin:6px 0 -4px;
+    font-family:var(--font-display);
+    font-weight:800;
+    font-size:1rem;
+    color:var(--ink);
+  }
+  .badge-section-title small{margin-left:8px;font-family:'Quicksand',sans-serif;font-weight:700;font-size:.8rem;color:var(--pink-deep);}
 
   .home-nav-row{
     display:flex;
@@ -1107,6 +1134,11 @@
                 <small id="dash-badges-count"></small>
               </span>
             </button>
+            <div class="collect-picker" role="group" aria-label="Which badge do you want next?">
+              <span class="collect-label">Next badge:</span>
+              <button type="button" class="collect-pill" data-collection="animals">Animals</button>
+              <button type="button" class="collect-pill" data-collection="crystals">Crystals</button>
+            </div>
             <p class="dash-test-stats" id="dash-test-stats"></p>
           </div>
           <label class="field-label" for="word-input">
@@ -1324,10 +1356,27 @@
     'crystal-shrine': ['#A97BE8','#5FC7C2','#E8C56B','#E28FAE','#8FE0C9']
   };
 
-  var BADGE_POOLS = {
-    alina: ['fox','wolf','owl','raven','deer','otter','hare','moth'],
-    monty: ['amethyst','rose-quartz','citrine','clear-quartz','moonstone','obsidian','tigers-eye','labradorite']
+  // Add new badges by appending an id here (plus its BADGE_META entry and
+  // artwork symbol). Each kid picks which collection their next badge
+  // comes from; `collecting` defaults to what they were already getting.
+  var COLLECTIONS = {
+    animals:  { title: 'Menagerie', possessive: 'menagerie', ids: ['fox','wolf','owl','raven','deer','otter','hare','moth'] },
+    crystals: { title: 'Shrine',    possessive: 'shrine',    ids: ['amethyst','rose-quartz','citrine','clear-quartz','moonstone','obsidian','tigers-eye','labradorite'] }
   };
+  var COLLECTION_ORDER = ['animals', 'crystals'];
+  var DEFAULT_COLLECTION = { alina: 'animals', monty: 'crystals' };
+  var PLAYER_NAMES = { alina: 'Alina', monty: 'Monty' };
+
+  function collectionOf(badgeId){
+    for(var i = 0; i < COLLECTION_ORDER.length; i++){
+      if(COLLECTIONS[COLLECTION_ORDER[i]].ids.indexOf(badgeId) !== -1){ return COLLECTION_ORDER[i]; }
+    }
+    return null;
+  }
+
+  function allBadgeIds(){
+    return COLLECTIONS.animals.ids.concat(COLLECTIONS.crystals.ids, ['perfect-speller']);
+  }
   var BADGE_META = {
     fox:{label:'Fox', symbol:'badge-fox'},
     wolf:{label:'Wolf', symbol:'badge-wolf'},
@@ -1347,7 +1396,6 @@
     labradorite:{label:'Labradorite', symbol:'badge-labradorite'},
     'perfect-speller':{label:'Perfect Speller', symbol:'badge-ribbon'}
   };
-  var POOL_TITLE = { alina: 'Alina’s Menagerie', monty: 'Monty’s Shrine' };
   var PLAYER_DEFAULT_THEME = { alina: 'wild-woods', monty: 'crystal-shrine' };
   var THEME_LABELS = { playground: 'Playground', 'wild-woods': 'Wild Woods', 'crystal-shrine': 'Crystal Shrine' };
   var GAMES_PER_BADGE = 2;         // every 2 rounds played (any game, any result) earns the next animal/gem badge -
@@ -1531,23 +1579,28 @@
   }
 
   /** Spends GAMES_PER_BADGE of a player's banked games on a random
-   * unclaimed animal/gem badge. If they've already collected the whole
-   * pool, progress stays banked at full (not piling up) so the first game
-   * - or app open - after new badges are added to BADGE_POOLS pays out at
-   * once. Mutates `data` in place; caller persists it. Returns the badge
-   * id if one was awarded, else null. */
-  function maybeAwardBadge(key, data){
+   * unclaimed badge from the collection they're collecting. If that
+   * collection is already complete it falls back to the other one (and
+   * switches `collecting` to follow). If both are complete, progress stays
+   * banked at full (not piling up) so the first game - or app open - after
+   * new badges are added to COLLECTIONS pays out at once. Mutates `data`
+   * in place; caller persists it. Returns the badge id if one was awarded,
+   * else null. */
+  function maybeAwardBadge(data){
     if(data.gamesTowardBadge < GAMES_PER_BADGE){ return null; }
-    var pool = BADGE_POOLS[key] || [];
-    var unclaimed = pool.filter(function(id){ return data.badges.indexOf(id) === -1; });
-    if(!unclaimed.length){
-      data.gamesTowardBadge = GAMES_PER_BADGE;
-      return null;
+    var order = [data.collecting].concat(COLLECTION_ORDER.filter(function(n){ return n !== data.collecting; }));
+    for(var i = 0; i < order.length; i++){
+      var unclaimed = COLLECTIONS[order[i]].ids.filter(function(id){ return data.badges.indexOf(id) === -1; });
+      if(unclaimed.length){
+        var badge = unclaimed[Math.floor(Math.random() * unclaimed.length)];
+        data.badges.push(badge);
+        data.collecting = order[i];
+        data.gamesTowardBadge -= GAMES_PER_BADGE;
+        return badge;
+      }
     }
-    var badge = unclaimed[Math.floor(Math.random() * unclaimed.length)];
-    data.badges.push(badge);
-    data.gamesTowardBadge -= GAMES_PER_BADGE;
-    return badge;
+    data.gamesTowardBadge = GAMES_PER_BADGE;
+    return null;
   }
 
   /** Reads a player's doc, rolls their week over if it's stale (that only
@@ -1577,6 +1630,7 @@
         gamesTowardBadge: (typeof raw.gamesTowardBadge === 'number')
           ? raw.gamesTowardBadge
           : (raw.weeklyBadgeAwardedThisWeek ? 0 : Math.min(raw.weekGamesPlayed || 0, GAMES_PER_BADGE)),
+        collecting: Object.prototype.hasOwnProperty.call(COLLECTIONS, raw.collecting) ? raw.collecting : (DEFAULT_COLLECTION[key] || 'animals'),
         streakCount: raw.streakCount || 0,
         streakLastDay: raw.streakLastDay || null,
         testsThisWeek: raw.testsThisWeek || 0,
@@ -1600,14 +1654,14 @@
       }
       // Pays out banked games on load, so a badge isn't left waiting on
       // the next round (e.g. migrated progress, or newly added badges).
-      var newBadge = maybeAwardBadge(key, data);
+      var newBadge = maybeAwardBadge(data);
       if(needsCreate){
         return ref.set(data).then(function(){
           return { data: data, newBadge: newBadge };
         }).catch(function(){ return { data: data, newBadge: newBadge }; });
       }
       if(needsRollover || newBadge){
-        return dbPatch(key, { weekStart: data.weekStart, gamesTowardBadge: data.gamesTowardBadge, testsThisWeek: data.testsThisWeek, weekBestTestStars: data.weekBestTestStars, weekBestTestMax: data.weekBestTestMax, badges: data.badges }).then(function(){
+        return dbPatch(key, { weekStart: data.weekStart, gamesTowardBadge: data.gamesTowardBadge, collecting: data.collecting, testsThisWeek: data.testsThisWeek, weekBestTestStars: data.weekBestTestStars, weekBestTestMax: data.weekBestTestMax, badges: data.badges }).then(function(){
           return { data: data, newBadge: newBadge };
         });
       }
@@ -1632,12 +1686,13 @@
   }
 
   /** Progress toward the next animal/gem badge: GAMES_PER_BADGE rounds
-   * each, nothing time-limited. Once the whole pool is collected the bar
+   * each, nothing time-limited. Once both collections are complete the bar
    * stays full and says new ones are on the way. */
-  function badgeProgress(key, data){
-    var pool = BADGE_POOLS[key] || [];
+  function badgeProgress(data){
     var owned = data.badges || [];
-    var allCollected = pool.length > 0 && pool.every(function(id){ return owned.indexOf(id) !== -1; });
+    var allCollected = COLLECTION_ORDER.every(function(name){
+      return COLLECTIONS[name].ids.every(function(id){ return owned.indexOf(id) !== -1; });
+    });
     if(allCollected){
       return { pct: 100, label: 'all badges collected - more coming soon!', allCollected: true };
     }
@@ -1655,7 +1710,7 @@
     var fillEl = el('sb-week-fill-' + key);
     var labelEl = el('sb-week-label-' + key);
     if(fillEl && labelEl && data){
-      var progress = badgeProgress(key, data);
+      var progress = badgeProgress(data);
       fillEl.style.width = progress.pct + '%';
       labelEl.textContent = progress.label;
     }
@@ -1673,11 +1728,19 @@
    * players, this gives the selected one a fuller "how am I doing". */
   function updatePlayerDashboard(key, data){
     var countEl = el('dash-badges-count');
+    var ownedIds = data.badges || [];
     if(countEl){
-      var pool = (BADGE_POOLS[key] || []).concat(['perfect-speller']);
-      var owned = (data.badges || []).filter(function(id){ return pool.indexOf(id) !== -1; }).length;
-      countEl.textContent = owned + ' / ' + pool.length + ' unlocked';
+      var everyId = allBadgeIds();
+      var owned = ownedIds.filter(function(id){ return everyId.indexOf(id) !== -1; }).length;
+      countEl.textContent = owned + ' / ' + everyId.length + ' unlocked';
     }
+    document.querySelectorAll('.collect-pill').forEach(function(btn){
+      var name = btn.getAttribute('data-collection');
+      var ids = COLLECTIONS[name].ids;
+      var have = ids.filter(function(id){ return ownedIds.indexOf(id) !== -1; }).length;
+      btn.textContent = (name === 'animals' ? 'Animals ' : 'Crystals ') + have + '/' + ids.length;
+    });
+    applyCollecting(data.collecting);
     var testEl = el('dash-test-stats');
     if(testEl){
       var text = 'Spelling Test: ' + (data.testsThisWeek || 0) + ' perfect this week';
@@ -1687,6 +1750,26 @@
       testEl.textContent = text;
     }
   }
+
+  /** Reflects (and, when `opts.persist`, saves) which collection the
+   * selected player's next badge will come from. */
+  function applyCollecting(name, opts){
+    opts = opts || {};
+    document.querySelectorAll('.collect-pill').forEach(function(btn){
+      btn.classList.toggle('selected', btn.getAttribute('data-collection') === name);
+    });
+    if(opts.persist && dbApi && state.player){
+      dbPatch(state.player, { collecting: name });
+    }
+  }
+
+  document.querySelectorAll('.collect-pill').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var name = btn.getAttribute('data-collection');
+      applyCollecting(name, { persist: true });
+      el('home-hint').textContent = 'Your next badge will be ' + (name === 'animals' ? 'an animal!' : 'a crystal!');
+    });
+  });
 
   function refreshScoreboard(){
     if(!dbApi){ return; }
@@ -1743,7 +1826,7 @@
       // the spot. Only one banner can show per visit, so if this round
       // also earned the one-off Perfect Speller badge, that one wins it
       // (both badges are still kept).
-      var newPoolBadge = maybeAwardBadge(key, data);
+      var newPoolBadge = maybeAwardBadge(data);
       if(newPoolBadge && !pendingBadgeReveals[key]){ pendingBadgeReveals[key] = newPoolBadge; }
 
       data.lastPlayed = nowIso;
@@ -1758,6 +1841,7 @@
         totalRounds: data.totalRounds,
         totalStars: data.totalStars,
         gamesTowardBadge: data.gamesTowardBadge,
+        collecting: data.collecting,
         streakCount: data.streakCount,
         streakLastDay: data.streakLastDay,
         testsThisWeek: data.testsThisWeek,
@@ -1804,7 +1888,8 @@
     var meta = BADGE_META[badgeId];
     if(!meta){ return; }
     el('badge-banner-title').textContent = 'New badge unlocked!';
-    el('badge-banner-sub').textContent = meta.label + ' joined ' + (key === 'alina' ? 'Alina’s menagerie' : 'Monty’s shrine') + '.';
+    var collection = collectionOf(badgeId);
+    el('badge-banner-sub').textContent = meta.label + ' joined ' + (PLAYER_NAMES[key] || 'your') + '’s ' + (collection ? COLLECTIONS[collection].possessive : 'collection') + '.';
     el('badge-banner-use').setAttribute('href', '#' + meta.symbol);
     el('badge-banner').hidden = false;
   }
@@ -1812,12 +1897,12 @@
   el('badge-banner-dismiss').addEventListener('click', function(){ el('badge-banner').hidden = true; });
 
   function renderBadgesScreen(key, data){
-    el('badges-title').textContent = POOL_TITLE[key] || 'Badges';
+    el('badges-title').textContent = (PLAYER_NAMES[key] ? PLAYER_NAMES[key] + '’s ' : '') + 'Badges';
     var explainerEl = el('badges-explainer');
     if(explainerEl){
       explainerEl.textContent = 'Play ' + GAMES_PER_BADGE + ' games to win a new badge! Keep playing and you can collect them all.';
     }
-    var progress = badgeProgress(key, data);
+    var progress = badgeProgress(data);
     el('badges-week-fill').style.width = progress.pct + '%';
     el('badges-week-label').textContent = progress.label.charAt(0).toUpperCase() + progress.label.slice(1) + (progress.allCollected ? '' : '. Keep going!');
     var streak = effectiveStreak(data);
@@ -1829,9 +1914,19 @@
     }
     var grid = el('badge-grid');
     grid.innerHTML = '';
-    var pool = (BADGE_POOLS[key] || []).concat(['perfect-speller']);
     var owned = data.badges || [];
-    pool.forEach(function(id){
+    function addTitle(text, note){
+      var t = document.createElement('p');
+      t.className = 'badge-section-title';
+      t.textContent = text;
+      if(note){
+        var small = document.createElement('small');
+        small.textContent = note;
+        t.appendChild(small);
+      }
+      grid.appendChild(t);
+    }
+    function addSlot(id){
       var meta = BADGE_META[id];
       var unlocked = owned.indexOf(id) !== -1;
       var wrap = document.createElement('div');
@@ -1845,7 +1940,15 @@
       wrap.appendChild(medallion);
       wrap.appendChild(label);
       grid.appendChild(wrap);
+    }
+    COLLECTION_ORDER.forEach(function(name){
+      var ids = COLLECTIONS[name].ids;
+      var have = ids.filter(function(id){ return owned.indexOf(id) !== -1; }).length;
+      addTitle(COLLECTIONS[name].title + ' ' + have + '/' + ids.length, data.collecting === name ? 'collecting now' : '');
+      ids.forEach(addSlot);
     });
+    addTitle('Special');
+    addSlot('perfect-speller');
     var testStatsEl = el('badges-test-stats');
     if(testStatsEl){
       var text = 'Spelling Test: ' + (data.testsThisWeek || 0) + ' perfect this week · best week ' + (data.bestTestsInWeek || 0);
