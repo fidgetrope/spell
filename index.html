@@ -581,7 +581,8 @@
   .game-message.warm{color:var(--mint-deep);}
   .game-message.nudge{color:var(--coral);}
 
-  .hint-row{display:flex;justify-content:center;}
+  .hint-row{display:flex;justify-content:center;flex-wrap:wrap;gap:10px;}
+  .hint-btn:disabled{opacity:.45;cursor:default;transform:none;}
   .hint-btn{
     display:inline-flex;
     align-items:center;
@@ -912,6 +913,10 @@
     <symbol id="icon-check" viewBox="0 0 24 24">
       <path d="M5 13l4 4 10-11"></path>
     </symbol>
+    <symbol id="icon-undo" viewBox="0 0 24 24">
+      <path d="M9 14 4 9l5-5" stroke-linejoin="round"></path>
+      <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"></path>
+    </symbol>
     <symbol id="icon-target" viewBox="0 0 24 24">
       <circle cx="12" cy="12" r="8"></circle>
       <circle cx="12" cy="12" r="4"></circle>
@@ -1192,6 +1197,12 @@
         </div>
         <div id="scramble-slots" class="slots"></div>
         <div id="scramble-bank" class="tile-bank"></div>
+        <div class="hint-row">
+          <button type="button" id="undo-button" class="pill-btn secondary hint-btn" disabled>
+            <svg class="icon" aria-hidden="true"><use href="#icon-undo"></use></svg>
+            <span>Undo</span>
+          </button>
+        </div>
       </div>
     </section>
 
@@ -2309,6 +2320,8 @@
       t.addEventListener('click', function(){ placeLetter(idx); });
       bankWrap.appendChild(t);
     });
+
+    el('undo-button').disabled = slotState.every(function(s){ return s === null; });
   }
 
   function placeLetter(bankIdx){
@@ -2322,12 +2335,22 @@
   }
 
   function removeFromSlot(slotIdx){
+    // A full row is already being checked, so leave it alone until it resets.
+    if(slotState.indexOf(null) === -1){ return; }
     var bankIdx = slotState[slotIdx];
     if(bankIdx === null){ return; }
     bankState[bankIdx].used = false;
     slotState[slotIdx] = null;
     renderScramble();
   }
+
+  function undoLastLetter(){
+    for(var i = slotState.length - 1; i >= 0; i--){
+      if(slotState[i] !== null){ removeFromSlot(i); return; }
+    }
+  }
+
+  el('undo-button').addEventListener('click', undoLastLetter);
 
   function checkScrambleAnswer(){
     var built = slotState.map(function(bankIdx){ return bankState[bankIdx].letter; }).join('');
