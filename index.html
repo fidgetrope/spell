@@ -1419,9 +1419,19 @@
     index: 0,
     stars: 0,
     maxStars: 0,
+    finished: false,   // set once a round's results have been shown and recorded
     player: null,
     playerName: ''
   };
+
+  // The single pending "go to the next word" timer. Scheduling replaces any
+  // earlier one, so a double tap can only ever advance one word, and leaving
+  // the game or starting a new round cancels it outright.
+  var advanceTimer = null;
+  function scheduleAdvance(ms){
+    clearTimeout(advanceTimer);
+    advanceTimer = setTimeout(advanceRound, ms);
+  }
 
   /* ---------------- theme engine ---------------- */
 
@@ -1652,6 +1662,10 @@
         theme: raw.theme || null,
         words: raw.words || null
       };
+      // A personal best can't exceed its own maximum. Rounds recorded by an
+      // earlier version that double-counted stars may have saved one that
+      // does (e.g. 15/12), which would stop any real score beating it.
+      if(data.bestMax && data.bestStars > data.bestMax){ data.bestStars = data.bestMax; }
       var nowWeek = currentWeekStart(weekStartDay);
       var needsRollover = !!raw.weekStart && data.weekStart !== nowWeek;
       var needsCreate = !snap.exists;
@@ -2115,6 +2129,9 @@
     screens[name].classList.add('active');
     topbar.hidden = !(name === 'scramble' || name === 'memory' || name === 'spot' || name === 'test');
     if(name !== 'results'){ clearConfetti(); }
+    // Walking away from a round mid-"Spot on!" must not let its pending
+    // next-word timer fire later and score a game nobody finished.
+    if(name === 'home' || name === 'badges' || name === 'themes'){ clearTimeout(advanceTimer); }
     if(name === 'home'){
       refreshScoreboard();
       // Pick up a list a grown-up published since this tab was opened.
@@ -2166,7 +2183,7 @@
   }
 
   function addStars(n){
-    if(n > 0){ state.stars += n; updateStarTally(); }
+    if(n > 0){ state.stars = Math.min(state.maxStars, state.stars + n); updateStarTally(); }
   }
 
   function setMascotFx(id, cls){
@@ -2214,6 +2231,8 @@
     state.index = 0;
     state.stars = 0;
     state.maxStars = words.length * 3;
+    state.finished = false;
+    clearTimeout(advanceTimer);
     renderProgressDots();
     updateStarTally();
     if(mode === 'scramble'){
@@ -2361,7 +2380,7 @@
       el('scramble-message').className = 'game-message warm';
       el('scramble-message').textContent = 'Yes! That’s it!';
       setMascotFx('mascot-scramble', 'celebrate');
-      setTimeout(advanceRound, 1300);
+      scheduleAdvance(1300);
     } else {
       scrambleAttempts++;
       el('scramble-message').className = 'game-message nudge';
@@ -2382,10 +2401,12 @@
   var memoryAttempts = 0;
   var memoryTimer = null;
   var memoryReplayUsed = false;
+  var memoryLocked = false;
 
   function loadMemoryWord(){
     memoryAttempts = 0;
     memoryReplayUsed = false;
+    memoryLocked = false;
     el('memory-input').value = '';
     setMascotFx('mascot-memory', null);
     revealMemoryWord();
@@ -2458,24 +2479,29 @@
   }
 
   function submitMemory(){
+    // Once a word is settled (right, or revealed after two misses) further
+    // taps on Check / Enter must do nothing until the next word loads.
+    if(memoryLocked){ return; }
     var input = el('memory-input');
     var value = input.value.trim();
     if(!value){ return; }
     var correct = value.toLowerCase() === currentWord().toLowerCase();
     if(correct){
+      memoryLocked = true;
       var stars = memoryAttempts === 0 ? 3 : 1;
       addStars(stars);
       el('memory-message').className = 'game-message warm';
       el('memory-message').textContent = 'Spot on!';
       setMascotFx('mascot-memory', 'celebrate');
-      setTimeout(advanceRound, 1300);
+      scheduleAdvance(1300);
     } else {
       memoryAttempts++;
       setMascotFx('mascot-memory', 'oops');
       if(memoryAttempts >= 2){
+        memoryLocked = true;
         el('memory-message').className = 'game-message nudge';
         el('memory-message').textContent = 'It’s spelled ' + currentWord() + '. Nice try, on we go!';
-        setTimeout(advanceRound, 2000);
+        scheduleAdvance(2000);
       } else {
         el('memory-message').className = 'game-message nudge';
         el('memory-message').textContent = 'So close! Have another try.';
@@ -2628,7 +2654,7 @@
       el('spot-message').textContent = 'Yes! That’s it!';
       setMascotFx('mascot-spot', 'celebrate');
       Array.from(el('spot-options').children).forEach(function(b){ b.disabled = true; });
-      setTimeout(advanceRound, 1300);
+      scheduleAdvance(1300);
     } else {
       spotAttempts++;
       btnEl.classList.add('wrong');
@@ -2684,7 +2710,7 @@
       el('test-message').textContent = 'It’s spelled ' + currentWord() + '.';
       setMascotFx('mascot-test', 'oops');
     }
-    setTimeout(advanceRound, 1600);
+    scheduleAdvance(1600);
   }
 
   el('btn-test-check').addEventListener('click', submitTest);
@@ -2696,6 +2722,7 @@
   /* ---------------- shared progression ---------------- */
 
   function advanceRound(){
+    if(state.finished){ return; }
     state.index++;
     if(state.index >= state.order.length){
       showResults();
@@ -2709,6 +2736,8 @@
   }
 
   function showResults(){
+    if(state.finished){ return; }
+    state.finished = true;
     clearTimeout(memoryTimer);
     renderProgressDots();
     el('results-stars-count').textContent = String(state.stars);
